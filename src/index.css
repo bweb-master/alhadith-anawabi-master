@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", system-ui, -apple-system, sans-serif;
+  --font-serif: "Amiri", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 17px;
+    background-color: #FBF9F5;
+    color: #1C1917;
+  }
+
+  .font-hadith {
+    font-family: "Amiri", Georgia, serif;
+    line-height: 2.15;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Subtle faint Andalusian / Islamic 8-fold geometric pattern */
+.islamic-pattern-bg {
+  background-color: #FBF9F5;
+  background-image: url("data:image/svg+xml,%3Csvg width='96' height='96' viewBox='0 0 96 96' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23854D0E' stroke-width='0.7' stroke-opacity='0.065'%3E%3Cpolygon points='48,6 60,36 90,48 60,60 48,90 36,60 6,48 36,36'/%3E%3Crect x='22' y='22' width='52' height='52' transform='rotate(45 48 48)'/%3E%3Ccircle cx='48' cy='48' r='10'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.islamic-hero-pattern {
+  background-color: #FFFFFF;
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%2314532D' stroke-width='0.75' stroke-opacity='0.055'%3E%3Cpolygon points='60,8 74,46 112,60 74,74 60,112 46,74 8,60 46,46'/%3E%3Crect x='28' y='28' width='64' height='64' transform='rotate(45 60 60)'/%3E%3Ccircle cx='60' cy='60' r='14'/%3E%3Cpath d='M0,60 L8,60 M112,60 L120,60 M60,0 L60,8 M60,112 L60,120'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Smooth GPU-composited card & button lift */
+.card-hover-lift {
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 220ms ease;
+}
+
+.card-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 28px -10px rgba(28, 25, 23, 0.09);
+}
+
+.btn-hover-motion {
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.btn-hover-motion:hover {
+  transform: translateY(-2px);
+}
+
+.btn-hover-motion:active {
+  transform: translateY(0);
+}
+
+/* Custom subtle scrollbars for archival reading */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F3EFE6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D6CEBE;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A092;
+}
