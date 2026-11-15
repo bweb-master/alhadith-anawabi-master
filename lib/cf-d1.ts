@@ -78,3 +78,49 @@ export function normalizeArabicServer(text: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+const SERVER_STOP_WORDS = new Set([
+  'عن',
+  'ان',
+  'في',
+  'من',
+  'الي',
+  'علي',
+  'قال',
+  'رسول',
+  'الله',
+  'صلي',
+  'وسلم',
+  'عليه',
+  'رضي',
+  'عنه',
+  'عنها',
+  'عنهم',
+  'حدثنا',
+  'اخبرنا',
+  'سمعت',
+  'يقول',
+  'كان',
+  'انه',
+  'ما',
+  'لا',
+  'او',
+  'ثم',
+  'بن',
+  'ابي',
+  'عبد',
+]);
+
+export function tokenizeArabicServer(text: string): string[] {
+  const norm = normalizeArabicServer(text);
+  if (!norm) return [];
+  const words = norm
+    .split(' ')
+    .map((t) => t.replace(/["'*]/g, '').trim())
+    .filter((t) => t.length >= 2);
+  const meaningful = Array.from(
+    new Set(words.filter((w) => !SERVER_STOP_WORDS.has(w)))
+  );
+  return meaningful.length > 0 ? meaningful : Array.from(new Set(words));
+}
+

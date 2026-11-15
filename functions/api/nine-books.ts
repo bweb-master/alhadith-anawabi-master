@@ -1,8 +1,10 @@
 import {
+  D1Database,
   jsonResponse,
   normalizeArabicServer,
   PagesContext,
   requireDb,
+  tokenizeArabicServer,
   verifyAdminPassword,
 } from '../../lib/cf-d1';
 import type { NineBookHadith, NineBookKey } from '../../src/types/hadith';
@@ -14,6 +16,36 @@ interface NineBookRow {
   id_in_book: number | null;
   chapter_name: string;
   arabic_text: string;
+}
+
+async function runFtsQuery(
+  db: D1Database,
+  ftsQuery: string,
+  book: string,
+  limit: number
+): Promise<NineBookRow[]> {
+  const sql =
+    book === 'all'
+      ? `SELECT nb.uid, nb.book_key, nb.hadith_id, nb.id_in_book, nb.chapter_name, nb.arabic_text
+         FROM nine_books_fts fts
+         JOIN nine_books nb ON nb.uid = fts.uid
+         WHERE nine_books_fts MATCH ?
+         ORDER BY bm25(nine_books_fts)
+         LIMIT ?`
+      : `SELECT nb.uid, nb.book_key, nb.hadith_id, nb.id_in_book, nb.chapter_name, nb.arabic_text
+         FROM nine_books_fts fts
+         JOIN nine_books nb ON nb.uid = fts.uid
+         WHERE nine_books_fts MATCH ? AND nb.book_key = ?
+         ORDER BY bm25(nine_books_fts)
+         LIMIT ?`;
+
+  const stmt =
+    book === 'all'
+      ? db.prepare(sql).bind(ftsQuery, limit)
+      : db.prepare(sql).bind(ftsQuery, book, limit);
+
+  const res = await stmt.all<NineBookRow>();
+  return res.results || [];
 }
 
 export async function onRequestGet(context: PagesContext): Promise<Response> {
@@ -30,47 +62,37 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
 
   const q = url.searchParams.get('q') || '';
   const book = url.searchParams.get('book') || 'all';
-  const norm = normalizeArabicServer(q);
-
-  if (!norm) {
-    return jsonResponse({ items: [] });
-  }
-
-  const tokens = norm
-    .split(' ')
-    .map((t) => t.replace(/["'*]/g, '').trim())
-    .filter((t) => t.length >= 2)
-    .slice(0, 8);
+  const tokens = tokenizeArabicServer(q).slice(0, 10);
 
   if (tokens.length === 0) {
     return jsonResponse({ items: [] });
   }
 
-  // Build safe FTS5 OR/prefix query so partial matches rank high
-  const ftsQuery = tokens.map((t) => `"${t}"`).join(' OR ');
+  const merged = new Map<string, NineBookRow>();
 
-  const sql =
-    book === 'all'
-      ? `SELECT nb.uid, nb.book_key, nb.hadith_id, nb.id_in_book, nb.chapter_name, nb.arabic_text
-         FROM nine_books_fts fts
-         JOIN nine_books nb ON nb.uid = fts.uid
-         WHERE nine_books_fts MATCH ?
-         ORDER BY bm25(nine_books_fts)
-         LIMIT 50`
-      : `SELECT nb.uid, nb.book_key, nb.hadith_id, nb.id_in_book, nb.chapter_name, nb.arabic_text
-         FROM nine_books_fts fts
-         JOIN nine_books nb ON nb.uid = fts.uid
-         WHERE nine_books_fts MATCH ? AND nb.book_key = ?
-         ORDER BY bm25(nine_books_fts)
-         LIMIT 50`;
+  // 1. High-precision AND query using the most distinctive (longest) tokens
+  if (tokens.length >= 2) {
+    const distinctive = [...tokens]
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 4);
+    const andQuery = distinctive.map((t) => `"${t}"`).join(' AND ');
+    const exactRows = await runFtsQuery(dbOrRes, andQuery, book, 50);
+    exactRows.forEach((r) => merged.set(r.uid, r));
+  }
 
-  const stmt =
-    book === 'all'
-      ? dbOrRes.prepare(sql).bind(ftsQuery)
-      : dbOrRes.prepare(sql).bind(ftsQuery, book);
+  // 2. If few exact AND matches were found, supplement with OR across meaningful tokens
+  if (merged.size < 10) {
+    const orTokens = [...tokens]
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 6);
+    const orQuery = orTokens.map((t) => `"${t}"`).join(' OR ');
+    const broadRows = await runFtsQuery(dbOrRes, orQuery, book, 50);
+    broadRows.forEach((r) => {
+      if (!merged.has(r.uid)) merged.set(r.uid, r);
+    });
+  }
 
-  const res = await stmt.all<NineBookRow>();
-  const items: NineBookHadith[] = (res.results || []).map((r) => ({
+  const items: NineBookHadith[] = Array.from(merged.values()).map((r) => ({
     id: r.hadith_id,
     idInBook: r.id_in_book ?? undefined,
     bookKey: r.book_key,
