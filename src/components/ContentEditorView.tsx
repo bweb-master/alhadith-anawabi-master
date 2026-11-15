@@ -26,6 +26,8 @@ interface ContentEditorViewProps {
   editingHadithId: string | null;
   editingNarratorId: string | null;
   isD1Connected: boolean;
+  d1Reason?: 'no_api' | 'no_db_binding' | 'db_error';
+  d1ErrorDetail?: string;
   isAdminUnlocked: boolean;
   d1HadithCount?: number;
   onUnlockAdmin: (password: string) => Promise<boolean>;
@@ -85,6 +87,8 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   editingHadithId,
   editingNarratorId,
   isD1Connected,
+  d1Reason,
+  d1ErrorDetail,
   isAdminUnlocked,
   d1HadithCount = 0,
   onUnlockAdmin,
@@ -299,10 +303,35 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             )}
           </div>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-[#57534E]">
-            <span>
-              وضع التجربة المحلي: التعديلات تُحفظ مؤقتاً في متصفحك فقط، وعند نشر هذا التحديث على Cloudflare Pages ستتصل تلقائياً بقاعدة بيانات D1.
-            </span>
+          <div className="space-y-1.5 text-sm text-[#57534E]">
+            {d1Reason === 'no_db_binding' ? (
+              <>
+                <p className="font-semibold text-[#854D0E]">
+                  تم العثور على خادم Cloudflare Pages Functions، لكن ربط قاعدة البيانات (DB) غير مُفعّل بعد في هذا النشر.
+                </p>
+                <p className="text-xs text-[#6B655E]">
+                  تأكد في لوحة Cloudflare Pages من ربط D1 باسم <code className="font-mono">DB</code> في بيئة <strong>Production</strong> ثم أعد نشر الموقع (Retry deployment) لتظهر خانة كلمة المرور.
+                </p>
+              </>
+            ) : d1Reason === 'db_error' ? (
+              <>
+                <p className="font-semibold text-red-700">
+                  تم ربط قاعدة البيانات DB لكن تعذر قراءة الجداول منها.
+                </p>
+                <p className="text-xs text-[#6B655E]">
+                  تأكد من تنفيذ أوامر إنشاء الجداول الأربعة في Console قاعدة <code className="font-mono">mohala-db</code>. ({d1ErrorDetail || 'خطأ غير معروف'})
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-[#1C1917]">
+                  وضع التجربة المحلي (غير متصل بـ Cloudflare D1 حالياً)
+                </p>
+                <p className="text-xs text-[#6B655E]">
+                  التعديلات الآن تُحفظ مؤقتاً في متصفحك فقط دون كلمة مرور. لظهور رسالة الاتصال وخانة كلمة المرور والحفظ الدائم: ارفع المجلدات الجديدة (<code className="font-mono">functions/</code> و<code className="font-mono">lib/</code> و<code className="font-mono">src/</code>) إلى GitHub وافتح رابط <code className="font-mono">*.pages.dev</code> (وليس المعاينة المحلية أو workers.dev).
+                </p>
+              </>
+            )}
           </div>
         )}
 

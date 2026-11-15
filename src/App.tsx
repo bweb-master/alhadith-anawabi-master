@@ -78,6 +78,10 @@ export default function App() {
 
   // Cloudflare D1 integration state
   const [isD1Connected, setIsD1Connected] = useState(false);
+  const [d1Reason, setD1Reason] = useState<'no_api' | 'no_db_binding' | 'db_error' | undefined>(
+    undefined
+  );
+  const [d1ErrorDetail, setD1ErrorDetail] = useState<string | undefined>(undefined);
   const [d1HadithCount, setD1HadithCount] = useState(0);
   const [d1NineBookTotal, setD1NineBookTotal] = useState(0);
   const [d1BookCounts, setD1BookCounts] = useState<Record<string, number>>({});
@@ -101,9 +105,17 @@ export default function App() {
     let cancelled = false;
     async function initD1() {
       const health = await checkD1Health();
-      if (cancelled || !health.connected) return;
+      if (cancelled) return;
+      if (!health.connected) {
+        setIsD1Connected(false);
+        setD1Reason(health.reason);
+        setD1ErrorDetail(health.errorDetail);
+        return;
+      }
 
       setIsD1Connected(true);
+      setD1Reason(undefined);
+      setD1ErrorDetail(undefined);
       setD1HadithCount(health.counts?.hadiths || 0);
       setD1NineBookTotal(health.counts?.nineBooks || 0);
 
@@ -516,6 +528,8 @@ export default function App() {
             editingHadithId={editingHadithId}
             editingNarratorId={editingNarratorId}
             isD1Connected={isD1Connected}
+            d1Reason={d1Reason}
+            d1ErrorDetail={d1ErrorDetail}
             isAdminUnlocked={isAdminUnlocked}
             d1HadithCount={d1HadithCount}
             onUnlockAdmin={handleUnlockAdmin}

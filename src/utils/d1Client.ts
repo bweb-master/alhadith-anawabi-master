@@ -2,6 +2,8 @@ import { MuhallaHadith, Narrator, NineBookHadith, NineBookKey } from '../types/h
 
 export interface D1HealthStatus {
   connected: boolean;
+  reason?: 'no_api' | 'no_db_binding' | 'db_error';
+  errorDetail?: string;
   counts?: {
     hadiths: number;
     narrators: number;
@@ -13,17 +15,29 @@ export async function checkD1Health(): Promise<D1HealthStatus> {
   try {
     const res = await fetch('/api/health', { cache: 'no-store' });
     const contentType = res.headers.get('content-type') || '';
-    if (!res.ok || !contentType.includes('application/json')) {
-      return { connected: false };
+    if (!contentType.includes('application/json')) {
+      return { connected: false, reason: 'no_api' };
     }
     const data = (await res.json()) as {
       ok?: boolean;
+      mode?: string;
+      error?: string;
+      details?: string;
       counts?: { hadiths: number; narrators: number; nineBooks: number };
     };
-    if (!data.ok) return { connected: false };
+    if (!data.ok) {
+      if (data.mode === 'local') {
+        return { connected: false, reason: 'no_db_binding' };
+      }
+      return {
+        connected: false,
+        reason: 'db_error',
+        errorDetail: data.details || data.error,
+      };
+    }
     return { connected: true, counts: data.counts };
   } catch {
-    return { connected: false };
+    return { connected: false, reason: 'no_api' };
   }
 }
 
