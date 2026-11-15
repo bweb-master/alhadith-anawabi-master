@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search,
   Upload,
@@ -87,14 +87,24 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
     }
   }, [muhallaHadiths, targetMuhallaId]);
 
+  const searchCacheRef = useRef<Map<string, NineBookHadith[]>>(new Map());
+
   useEffect(() => {
     if (!isD1Connected) {
       setD1Results([]);
       return;
     }
     const cleanQ = normalizeArabic(queryText);
-    if (cleanQ.length < 2) {
+    if (cleanQ.length < 3) {
       setD1Results([]);
+      return;
+    }
+
+    const cacheKey = `${selectedBookFilter}::${cleanQ}`;
+    const cached = searchCacheRef.current.get(cacheKey);
+    if (cached) {
+      setD1Results(cached);
+      setIsSearchingD1(false);
       return;
     }
 
@@ -104,6 +114,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
       try {
         const items = await searchD1NineBooks(queryText, selectedBookFilter);
         if (!cancelled) {
+          searchCacheRef.current.set(cacheKey, items);
           setD1Results(items);
         }
       } catch {
@@ -111,7 +122,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
       } finally {
         if (!cancelled) setIsSearchingD1(false);
       }
-    }, 300);
+    }, 550);
 
     return () => {
       cancelled = true;
@@ -247,6 +258,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
         await uploadD1NineBookBatch(bookKey, chunk, adminPassword, i === 0);
       }
       await onNineBooksD1Updated();
+      searchCacheRef.current.clear();
       setPendingUpload(null);
       setUploadProgress(null);
       setStatusMessage(

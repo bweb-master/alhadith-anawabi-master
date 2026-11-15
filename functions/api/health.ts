@@ -13,9 +13,6 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
     const narratorsCountRow = await env.DB.prepare(
       'SELECT COUNT(*) as c FROM narrators'
     ).first<{ c: number }>();
-    const nineBooksCountRow = await env.DB.prepare(
-      'SELECT COUNT(*) as c FROM nine_books'
-    ).first<{ c: number }>();
 
     return jsonResponse({
       ok: true,
@@ -24,7 +21,7 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
       counts: {
         hadiths: Number(hadithsCountRow?.c || 0),
         narrators: Number(narratorsCountRow?.c || 0),
-        nineBooks: Number(nineBooksCountRow?.c || 0),
+        nineBooks: 0,
       },
     });
   } catch (err) {

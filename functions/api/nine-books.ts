@@ -70,26 +70,18 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
 
   const merged = new Map<string, NineBookRow>();
 
-  // 1. High-precision AND query using the most distinctive (longest) tokens
+  // High-precision AND query using the most distinctive (longest) tokens
   if (tokens.length >= 2) {
     const distinctive = [...tokens]
       .sort((a, b) => b.length - a.length)
       .slice(0, 4);
     const andQuery = distinctive.map((t) => `"${t}"`).join(' AND ');
-    const exactRows = await runFtsQuery(dbOrRes, andQuery, book, 50);
+    const exactRows = await runFtsQuery(dbOrRes, andQuery, book, 40);
     exactRows.forEach((r) => merged.set(r.uid, r));
-  }
-
-  // 2. If few exact AND matches were found, supplement with OR across meaningful tokens
-  if (merged.size < 10) {
-    const orTokens = [...tokens]
-      .sort((a, b) => b.length - a.length)
-      .slice(0, 6);
-    const orQuery = orTokens.map((t) => `"${t}"`).join(' OR ');
-    const broadRows = await runFtsQuery(dbOrRes, orQuery, book, 50);
-    broadRows.forEach((r) => {
-      if (!merged.has(r.uid)) merged.set(r.uid, r);
-    });
+  } else {
+    const singleQuery = `"${tokens[0]}"`;
+    const rows = await runFtsQuery(dbOrRes, singleQuery, book, 30);
+    rows.forEach((r) => merged.set(r.uid, r));
   }
 
   const items: NineBookHadith[] = Array.from(merged.values()).map((r) => ({
@@ -120,15 +112,23 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     return jsonResponse({ error: 'بيانات الكتاب غير صالحة' }, 400);
   }
 
+  // Only clear existing rows if the book actually has prior rows in nine_books
   if (body.clearBook) {
-    await dbOrRes
-      .prepare('DELETE FROM nine_books WHERE book_key = ?')
+    const existing = await dbOrRes
+      .prepare('SELECT 1 as found FROM nine_books WHERE book_key = ? LIMIT 1')
       .bind(body.bookKey)
-      .run();
-    await dbOrRes
-      .prepare('DELETE FROM nine_books_fts WHERE book_key = ?')
-      .bind(body.bookKey)
-      .run();
+      .first<{ found: number }>();
+
+    if (existing?.found) {
+      await dbOrRes
+        .prepare('DELETE FROM nine_books WHERE book_key = ?')
+        .bind(body.bookKey)
+        .run();
+      await dbOrRes
+        .prepare('DELETE FROM nine_books_fts WHERE book_key = ?')
+        .bind(body.bookKey)
+        .run();
+    }
   }
 
   const insertMain = dbOrRes.prepare(`
@@ -140,7 +140,6 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       normalized_text = excluded.normalized_text
   `);
 
-  const deleteFts = dbOrRes.prepare('DELETE FROM nine_books_fts WHERE uid = ?');
   const insertFts = dbOrRes.prepare(`
     INSERT INTO nine_books_fts (uid, book_key, normalized_text, arabic_text)
     VALUES (?, ?, ?, ?)
@@ -160,7 +159,6 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         item.arabicText,
         norm
       ),
-      deleteFts.bind(uid),
       insertFts.bind(uid, body.bookKey, norm, item.arabicText)
     );
   }

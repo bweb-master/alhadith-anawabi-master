@@ -40,6 +40,7 @@ const STORAGE_KEYS = {
   hadiths: 'diwan_muhalla_hadiths_v1',
   narrators: 'diwan_muhalla_narrators_v1',
   adminPwd: 'diwan_admin_pwd_v1',
+  bookCounts: 'diwan_d1_book_counts_v1',
 };
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -50,6 +51,19 @@ function loadFromStorage<T>(key: string, fallback: T): T {
     return Array.isArray(parsed) && parsed.length > 0 ? (parsed as T) : fallback;
   } catch {
     return fallback;
+  }
+}
+
+function loadBookCountsFromStorage(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.bookCounts);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, number>)
+      : {};
+  } catch {
+    return {};
   }
 }
 
@@ -83,8 +97,13 @@ export default function App() {
   );
   const [d1ErrorDetail, setD1ErrorDetail] = useState<string | undefined>(undefined);
   const [d1HadithCount, setD1HadithCount] = useState(0);
-  const [d1NineBookTotal, setD1NineBookTotal] = useState(0);
-  const [d1BookCounts, setD1BookCounts] = useState<Record<string, number>>({});
+  const [d1BookCounts, setD1BookCounts] = useState<Record<string, number>>(() =>
+    loadBookCountsFromStorage()
+  );
+  const [d1NineBookTotal, setD1NineBookTotal] = useState<number>(() => {
+    const cached = loadBookCountsFromStorage();
+    return Object.values(cached).reduce((sum, n) => sum + Number(n || 0), 0);
+  });
   const [adminPassword, setAdminPassword] = useState<string>(() => {
     try {
       return sessionStorage.getItem(STORAGE_KEYS.adminPwd) || '';
@@ -100,6 +119,8 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isCheckingLogin, setIsCheckingLogin] = useState(false);
   const loginMenuRef = useRef<HTMLDivElement>(null);
+  const hasFetchedBookCountsRef = useRef(false);
+  const initialAdminPwdRef = useRef(adminPassword);
 
   useEffect(() => {
     if (!isLoginDropdownOpen) return;
@@ -126,6 +147,12 @@ export default function App() {
     setD1BookCounts(counts);
     const total = Object.values(counts).reduce((sum, n) => sum + Number(n || 0), 0);
     setD1NineBookTotal(total);
+    hasFetchedBookCountsRef.current = true;
+    try {
+      localStorage.setItem(STORAGE_KEYS.bookCounts, JSON.stringify(counts));
+    } catch {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
@@ -144,17 +171,14 @@ export default function App() {
       setD1Reason(undefined);
       setD1ErrorDetail(undefined);
       setD1HadithCount(health.counts?.hadiths || 0);
-      setD1NineBookTotal(health.counts?.nineBooks || 0);
 
       try {
-        const [d1Hadiths, d1Narrators, bookCounts] = await Promise.all([
+        const [d1Hadiths, d1Narrators] = await Promise.all([
           fetchD1Hadiths(),
           fetchD1Narrators(),
-          fetchD1NineBookCounts(),
         ]);
 
         if (cancelled) return;
-        setD1BookCounts(bookCounts);
 
         if (d1Hadiths.length > 0) {
           setHadiths(d1Hadiths);
@@ -169,8 +193,9 @@ export default function App() {
           );
         }
 
-        if (adminPassword) {
-          const valid = await verifyD1AdminPassword(adminPassword);
+        const storedPwd = initialAdminPwdRef.current;
+        if (storedPwd) {
+          const valid = await verifyD1AdminPassword(storedPwd);
           if (!cancelled) {
             if (valid) {
               setIsAdminUnlocked(true);
@@ -194,7 +219,15 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [adminPassword]);
+  }, []);
+
+  useEffect(() => {
+    if (activeSection === 'takhrij' && isD1Connected && !hasFetchedBookCountsRef.current) {
+      refreshD1NineBookCounts().catch(() => {
+        // keep cached counts if temporarily unavailable
+      });
+    }
+  }, [activeSection, isD1Connected, refreshD1NineBookCounts]);
 
   useEffect(() => {
     try {
@@ -229,6 +262,22 @@ export default function App() {
       return true;
     }
     return false;
+  };
+
+  const handleLockAdmin = () => {
+    setIsAdminUnlocked(false);
+    setAdminPassword('');
+    setIsLoginDropdownOpen(false);
+    setLoginError(null);
+    setLoginPasswordInput('');
+    try {
+      sessionStorage.removeItem(STORAGE_KEYS.adminPwd);
+    } catch {
+      // ignore
+    }
+    if (activeSection === 'editor') {
+      setActiveSection('home');
+    }
   };
 
   const handleHeaderLoginSubmit = async (e: React.FormEvent) => {
@@ -447,38 +496,56 @@ export default function App() {
             })}
           </nav>
 
-          {/* Zone 3: Researcher Login Dropdown -> Editor */}
-          <div className="relative flex items-center shrink-0" ref={loginMenuRef}>
-            <button
-              type="button"
-              onClick={() => {
-                if (isAdminUnlocked) {
-                  setEditorTab('hadith');
-                  setEditingHadithId('__NEW__');
-                  setActiveSection('editor');
-                } else {
-                  setLoginError(null);
-                  setIsLoginDropdownOpen((prev) => !prev);
-                }
-              }}
-              className={`btn-hover-motion inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer ${
-                activeSection === 'editor'
-                  ? 'bg-[#854D0E] text-white shadow-xs'
-                  : 'bg-[#854D0E] hover:bg-[#713F12] text-white'
-              }`}
-            >
-              {isAdminUnlocked ? (
-                <>
-                  <Unlock className="w-4 h-4" />
-                  <span>التعديلات</span>
-                </>
+          {/* Zone 3: Researcher Login Dropdown / Lock Editing Toggle */}
+          <div className="relative flex items-center gap-2 shrink-0" ref={loginMenuRef}>
+            {isAdminUnlocked ? (
+              activeSection === 'editor' ? (
+                <button
+                  type="button"
+                  onClick={handleLockAdmin}
+                  className="btn-hover-motion inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer bg-[#854D0E] hover:bg-[#713F12] text-white shadow-xs"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>غلق التعديل</span>
+                </button>
               ) : (
                 <>
-                  <LogIn className="w-4 h-4" />
-                  <span>دخول</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditorTab('hadith');
+                      setEditingHadithId('__NEW__');
+                      setActiveSection('editor');
+                    }}
+                    className="btn-hover-motion inline-flex items-center gap-2 px-3.5 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer bg-[#854D0E] hover:bg-[#713F12] text-white"
+                  >
+                    <Unlock className="w-4 h-4" />
+                    <span>التعديلات</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLockAdmin}
+                    className="btn-hover-motion inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#854D0E] border border-[#D6CEBE]"
+                    title="إغلاق وضع التعديل"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>غلق التعديل</span>
+                  </button>
                 </>
-              )}
-            </button>
+              )
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginError(null);
+                  setIsLoginDropdownOpen((prev) => !prev);
+                }}
+                className="btn-hover-motion inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer bg-[#854D0E] hover:bg-[#713F12] text-white"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>دخول</span>
+              </button>
+            )}
 
             {isLoginDropdownOpen && !isAdminUnlocked && (
               <div className="absolute left-0 top-full mt-2 w-80 bg-white border border-[#D6CEBE] rounded-xl shadow-lg p-5 z-50 space-y-4">
