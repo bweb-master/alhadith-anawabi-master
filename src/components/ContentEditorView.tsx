@@ -6,6 +6,10 @@ import {
   Download,
   RotateCcw,
   CheckCircle2,
+  Lock,
+  Unlock,
+  Database,
+  AlertCircle,
 } from 'lucide-react';
 import {
   GharibEntry,
@@ -21,10 +25,15 @@ interface ContentEditorViewProps {
   initialTab: 'hadith' | 'narrator' | 'export';
   editingHadithId: string | null;
   editingNarratorId: string | null;
-  onSaveHadith: (hadith: MuhallaHadith) => void;
-  onDeleteHadith: (id: string) => void;
-  onSaveNarrator: (narrator: Narrator) => void;
-  onDeleteNarrator: (id: string) => void;
+  isD1Connected: boolean;
+  isAdminUnlocked: boolean;
+  d1HadithCount?: number;
+  onUnlockAdmin: (password: string) => Promise<boolean>;
+  onSeedInitialD1: () => Promise<void>;
+  onSaveHadith: (hadith: MuhallaHadith) => Promise<void>;
+  onDeleteHadith: (id: string) => Promise<void>;
+  onSaveNarrator: (narrator: Narrator) => Promise<void>;
+  onDeleteNarrator: (id: string) => Promise<void>;
   onResetDefaults: () => void;
 }
 
@@ -75,6 +84,11 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   initialTab,
   editingHadithId,
   editingNarratorId,
+  isD1Connected,
+  isAdminUnlocked,
+  d1HadithCount = 0,
+  onUnlockAdmin,
+  onSeedInitialD1,
   onSaveHadith,
   onDeleteHadith,
   onSaveNarrator,
@@ -91,6 +105,9 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
     return found ? structuredClone(found) : narrators[0] ? structuredClone(narrators[0]) : EMPTY_NARRATOR();
   });
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
 
   useEffect(() => {
     setSubTab(initialTab);
@@ -123,28 +140,86 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   }, [editingNarratorId, narrators]);
 
   const showNotice = (msg: string) => {
+    setErrorNotice(null);
     setSavedNotice(msg);
-    setTimeout(() => setSavedNotice(null), 3500);
+    setTimeout(() => setSavedNotice(null), 4000);
   };
 
-  const handleHadithSubmit = (e: React.FormEvent) => {
+  const showError = (msg: string) => {
+    setSavedNotice(null);
+    setErrorNotice(msg);
+    setTimeout(() => setErrorNotice(null), 5000);
+  };
+
+  const handleUnlockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput.trim()) return;
+    setIsBusy(true);
+    try {
+      const ok = await onUnlockAdmin(passwordInput.trim());
+      if (ok) {
+        setPasswordInput('');
+        showNotice('تم تفعيل وضع التحرير والحفظ الدائم في Cloudflare D1.');
+      } else {
+        showError('كلمة مرور الباحث غير صحيحة.');
+      }
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleSeedClick = async () => {
+    setIsBusy(true);
+    try {
+      await onSeedInitialD1();
+      showNotice('تم رفع البيانات الأولية (أحاديث المحلى والرواة الأندلسيين) إلى قاعدة بيانات D1 بنجاح.');
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر تهيئة قاعدة البيانات');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleHadithSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hadithForm.issueTitle.trim() || !hadithForm.matnWithTashkeel.trim()) return;
-    onSaveHadith({
-      ...hadithForm,
-      updatedAt: new Date().toISOString().slice(0, 10),
-    });
-    showNotice('تم حفظ الحديث وتحديثه في المنصة بنجاح.');
+    setIsBusy(true);
+    try {
+      await onSaveHadith({
+        ...hadithForm,
+        updatedAt: new Date().toISOString().slice(0, 10),
+      });
+      showNotice(
+        isD1Connected
+          ? 'تم حفظ الحديث وتحديثه في قاعدة بيانات Cloudflare D1 بنجاح.'
+          : 'تم حفظ الحديث وتحديثه في المتصفح بنجاح.'
+      );
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر حفظ الحديث');
+    } finally {
+      setIsBusy(false);
+    }
   };
 
-  const handleNarratorSubmit = (e: React.FormEvent) => {
+  const handleNarratorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!narratorForm.name.trim()) return;
-    onSaveNarrator({
-      ...narratorForm,
-      jarhTaadil: narratorForm.jarhTaadil.filter((j) => j.scholar.trim() || j.verdict.trim()),
-    });
-    showNotice('تم حفظ بيانات الراوي في معجم الرواة بنجاح.');
+    setIsBusy(true);
+    try {
+      await onSaveNarrator({
+        ...narratorForm,
+        jarhTaadil: narratorForm.jarhTaadil.filter((j) => j.scholar.trim() || j.verdict.trim()),
+      });
+      showNotice(
+        isD1Connected
+          ? 'تم حفظ بيانات الراوي في قاعدة بيانات Cloudflare D1 بنجاح.'
+          : 'تم حفظ بيانات الراوي في المتصفح بنجاح.'
+      );
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر حفظ الراوي');
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const addGharibRow = () => {
@@ -166,6 +241,79 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Cloudflare D1 Status & Researcher Authentication Banner */}
+      <div className="bg-white border border-[#E6E0D4] rounded-xl p-5 space-y-3">
+        {isD1Connected ? (
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5 text-sm">
+              {isAdminUnlocked ? (
+                <Unlock className="w-4 h-4 text-[#14532D] shrink-0" />
+              ) : (
+                <Lock className="w-4 h-4 text-[#854D0E] shrink-0" />
+              )}
+              <div>
+                <p className="font-semibold text-[#1C1917]">
+                  {isAdminUnlocked
+                    ? 'متصل بقاعدة بيانات Cloudflare D1 — التحرير الدائم مُفعّل'
+                    : 'متصل بقاعدة بيانات Cloudflare D1 — أدخل كلمة مرور الباحث للحفظ الدائم'}
+                </p>
+                <p className="text-xs text-[#6B655E]">
+                  {isAdminUnlocked
+                    ? 'كل ما تضيفه أو تعدله يُحفظ تلقائياً في قاعدة البيانات السحابية ويظهر لجميع الزوار.'
+                    : 'تطابق كلمة المرور المخزنة في ADMIN_PASSWORD بإعدادات Cloudflare.'}
+                </p>
+              </div>
+            </div>
+
+            {!isAdminUnlocked ? (
+              <form onSubmit={handleUnlockSubmit} className="flex items-center gap-2">
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="كلمة مرور الباحث..."
+                  className="px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+                />
+                <button
+                  type="submit"
+                  disabled={isBusy}
+                  className="btn-hover-motion px-4 py-2 text-sm font-medium bg-[#14532D] text-white rounded-lg cursor-pointer whitespace-nowrap disabled:opacity-60"
+                >
+                  تفعيل التحرير
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSeedClick}
+                disabled={isBusy}
+                className="btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg cursor-pointer whitespace-nowrap disabled:opacity-60"
+              >
+                <Database className="w-4 h-4 text-[#854D0E]" />
+                <span>
+                  {d1HadithCount === 0
+                    ? 'تهيئة D1 بالبيانات الأولية (مطلوب أول مرة)'
+                    : 'مزامنة العينة الأولية مع D1'}
+                </span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-[#57534E]">
+            <span>
+              وضع التجربة المحلي: التعديلات تُحفظ مؤقتاً في متصفحك فقط، وعند نشر هذا التحديث على Cloudflare Pages ستتصل تلقائياً بقاعدة بيانات D1.
+            </span>
+          </div>
+        )}
+
+        {errorNotice && (
+          <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 px-3.5 py-2 rounded-lg">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorNotice}</span>
+          </div>
+        )}
+      </div>
+
       {/* Editor Sub-navigation */}
       <div className="bg-white border border-[#E6E0D4] rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-1 p-1 bg-[#F3EFE6] rounded-lg">
@@ -251,12 +399,20 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
               {hadiths.some((h) => h.id === hadithForm.id) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    onDeleteHadith(hadithForm.id);
-                    setHadithForm(EMPTY_HADITH());
-                    showNotice('تم حذف السجل.');
+                  disabled={isBusy}
+                  onClick={async () => {
+                    setIsBusy(true);
+                    try {
+                      await onDeleteHadith(hadithForm.id);
+                      setHadithForm(EMPTY_HADITH());
+                      showNotice('تم حذف السجل.');
+                    } catch (err) {
+                      showError(err instanceof Error ? err.message : 'تعذر حذف السجل');
+                    } finally {
+                      setIsBusy(false);
+                    }
                   }}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg cursor-pointer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg cursor-pointer disabled:opacity-60"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>حذف</span>
@@ -478,10 +634,11 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
           <div className="flex justify-end pt-3 border-t border-[#E6E0D4]">
             <button
               type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer"
+              disabled={isBusy}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
-              <span>حفظ الحديث في المنصة</span>
+              <span>{isBusy ? 'جاري الحفظ...' : 'حفظ الحديث في المنصة'}</span>
             </button>
           </div>
         </form>
@@ -529,12 +686,20 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
               {narrators.some((n) => n.id === narratorForm.id) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    onDeleteNarrator(narratorForm.id);
-                    setNarratorForm(EMPTY_NARRATOR());
-                    showNotice('تم حذف الراوي.');
+                  disabled={isBusy}
+                  onClick={async () => {
+                    setIsBusy(true);
+                    try {
+                      await onDeleteNarrator(narratorForm.id);
+                      setNarratorForm(EMPTY_NARRATOR());
+                      showNotice('تم حذف الراوي.');
+                    } catch (err) {
+                      showError(err instanceof Error ? err.message : 'تعذر حذف الراوي');
+                    } finally {
+                      setIsBusy(false);
+                    }
                   }}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg cursor-pointer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg cursor-pointer disabled:opacity-60"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>حذف</span>
@@ -663,10 +828,11 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
           <div className="flex justify-end pt-3 border-t border-[#E6E0D4]">
             <button
               type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer"
+              disabled={isBusy}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
-              <span>حفظ بيانات الراوي</span>
+              <span>{isBusy ? 'جاري الحفظ...' : 'حفظ بيانات الراوي'}</span>
             </button>
           </div>
         </form>

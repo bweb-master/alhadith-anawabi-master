@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
   MuhallaHadith,
@@ -12,6 +12,20 @@ import {
   SEED_NARRATORS,
   SEED_NINE_BOOKS,
 } from './data/seedData';
+import {
+  checkD1Health,
+  deleteD1Hadith,
+  deleteD1Narrator,
+  fetchD1Hadiths,
+  fetchD1Narrators,
+  fetchD1NineBookCounts,
+  saveD1Hadith,
+  saveD1HadithsBatch,
+  saveD1Narrator,
+  saveD1NarratorsBatch,
+  uploadD1NineBookBatch,
+  verifyD1AdminPassword,
+} from './utils/d1Client';
 import { HomeView } from './components/HomeView';
 import { AboutPlatformView } from './components/AboutPlatformView';
 import { MuhallaArchiveView } from './components/MuhallaArchiveView';
@@ -25,6 +39,7 @@ type MainSection = 'home' | 'muhalla' | 'takhrij' | 'tree' | 'narrators' | 'abou
 const STORAGE_KEYS = {
   hadiths: 'diwan_muhalla_hadiths_v1',
   narrators: 'diwan_muhalla_narrators_v1',
+  adminPwd: 'diwan_admin_pwd_v1',
 };
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -61,6 +76,87 @@ export default function App() {
   const [editingHadithId, setEditingHadithId] = useState<string | null>(null);
   const [editingNarratorId, setEditingNarratorId] = useState<string | null>(null);
 
+  // Cloudflare D1 integration state
+  const [isD1Connected, setIsD1Connected] = useState(false);
+  const [d1HadithCount, setD1HadithCount] = useState(0);
+  const [d1NineBookTotal, setD1NineBookTotal] = useState(0);
+  const [d1BookCounts, setD1BookCounts] = useState<Record<string, number>>({});
+  const [adminPassword, setAdminPassword] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(STORAGE_KEYS.adminPwd) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+
+  const refreshD1NineBookCounts = useCallback(async () => {
+    const counts = await fetchD1NineBookCounts();
+    setD1BookCounts(counts);
+    const total = Object.values(counts).reduce((sum, n) => sum + Number(n || 0), 0);
+    setD1NineBookTotal(total);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function initD1() {
+      const health = await checkD1Health();
+      if (cancelled || !health.connected) return;
+
+      setIsD1Connected(true);
+      setD1HadithCount(health.counts?.hadiths || 0);
+      setD1NineBookTotal(health.counts?.nineBooks || 0);
+
+      try {
+        const [d1Hadiths, d1Narrators, bookCounts] = await Promise.all([
+          fetchD1Hadiths(),
+          fetchD1Narrators(),
+          fetchD1NineBookCounts(),
+        ]);
+
+        if (cancelled) return;
+        setD1BookCounts(bookCounts);
+
+        if (d1Hadiths.length > 0) {
+          setHadiths(d1Hadiths);
+          setSelectedHadithId((prev) =>
+            d1Hadiths.some((h) => h.id === prev) ? prev : d1Hadiths[0].id
+          );
+        }
+        if (d1Narrators.length > 0) {
+          setNarrators(d1Narrators);
+          setSelectedNarratorId((prev) =>
+            d1Narrators.some((n) => n.id === prev) ? prev : d1Narrators[0].id
+          );
+        }
+
+        if (adminPassword) {
+          const valid = await verifyD1AdminPassword(adminPassword);
+          if (!cancelled) {
+            if (valid) {
+              setIsAdminUnlocked(true);
+            } else {
+              setAdminPassword('');
+              setIsAdminUnlocked(false);
+              try {
+                sessionStorage.removeItem(STORAGE_KEYS.adminPwd);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      } catch {
+        // Keep local data if read fails temporarily
+      }
+    }
+
+    initD1();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminPassword]);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.hadiths, JSON.stringify(hadiths));
@@ -77,19 +173,72 @@ export default function App() {
     }
   }, [narrators]);
 
-  const handleSaveHadith = (updated: MuhallaHadith) => {
+  const handleUnlockAdmin = async (password: string): Promise<boolean> => {
+    const ok = await verifyD1AdminPassword(password);
+    if (ok) {
+      setAdminPassword(password);
+      setIsAdminUnlocked(true);
+      try {
+        sessionStorage.setItem(STORAGE_KEYS.adminPwd, password);
+      } catch {
+        // ignore
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const handleSeedInitialD1 = async (): Promise<void> => {
+    await saveD1HadithsBatch(SEED_MUHALLA_HADITHS, adminPassword);
+    await saveD1NarratorsBatch(SEED_NARRATORS, adminPassword);
+
+    if (d1NineBookTotal === 0) {
+      const byBook = new Map<NineBookKey, NineBookHadith[]>();
+      SEED_NINE_BOOKS.forEach((item) => {
+        const list = byBook.get(item.bookKey) || [];
+        list.push(item);
+        byBook.set(item.bookKey, list);
+      });
+      for (const [bookKey, items] of byBook.entries()) {
+        await uploadD1NineBookBatch(bookKey, items, adminPassword, false);
+      }
+    }
+
+    const [d1Hadiths, d1Narrators] = await Promise.all([
+      fetchD1Hadiths(),
+      fetchD1Narrators(),
+    ]);
+    await refreshD1NineBookCounts();
+
+    if (d1Hadiths.length > 0) {
+      setHadiths(d1Hadiths);
+      setD1HadithCount(d1Hadiths.length);
+    }
+    if (d1Narrators.length > 0) {
+      setNarrators(d1Narrators);
+    }
+  };
+
+  const handleSaveHadith = async (updated: MuhallaHadith): Promise<void> => {
+    if (isD1Connected) {
+      await saveD1Hadith(updated, adminPassword);
+    }
     setHadiths((prev) => {
       const exists = prev.some((h) => h.id === updated.id);
       if (exists) {
         return prev.map((h) => (h.id === updated.id ? updated : h));
       }
+      setD1HadithCount((c) => c + 1);
       return [updated, ...prev];
     });
     setSelectedHadithId(updated.id);
     setEditingHadithId(updated.id);
   };
 
-  const handleDeleteHadith = (id: string) => {
+  const handleDeleteHadith = async (id: string): Promise<void> => {
+    if (isD1Connected) {
+      await deleteD1Hadith(id, adminPassword);
+    }
     setHadiths((prev) => {
       const next = prev.filter((h) => h.id !== id);
       if (selectedHadithId === id) {
@@ -99,7 +248,10 @@ export default function App() {
     });
   };
 
-  const handleSaveNarrator = (updated: Narrator) => {
+  const handleSaveNarrator = async (updated: Narrator): Promise<void> => {
+    if (isD1Connected) {
+      await saveD1Narrator(updated, adminPassword);
+    }
     setNarrators((prev) => {
       const exists = prev.some((n) => n.id === updated.id);
       if (exists) {
@@ -111,7 +263,10 @@ export default function App() {
     setEditingNarratorId(updated.id);
   };
 
-  const handleDeleteNarrator = (id: string) => {
+  const handleDeleteNarrator = async (id: string): Promise<void> => {
+    if (isD1Connected) {
+      await deleteD1Narrator(id, adminPassword);
+    }
     setNarrators((prev) => {
       const next = prev.filter((n) => n.id !== id);
       if (selectedNarratorId === id) {
@@ -131,33 +286,39 @@ export default function App() {
     });
   };
 
-  const handleLinkTakhrijToMuhalla = (
+  const handleLinkTakhrijToMuhalla = async (
     muhallaId: string,
     bookKey: NineBookKey,
     hadithNumber: number,
     chapterName: string
-  ) => {
+  ): Promise<void> => {
+    const target = hadiths.find((h) => h.id === muhallaId);
+    if (!target) return;
+    const already = target.takhrijLinks.some(
+      (l) => l.bookKey === bookKey && l.hadithNumber === hadithNumber
+    );
+    if (already) return;
+
+    const updatedHadith: MuhallaHadith = {
+      ...target,
+      takhrijLinks: [
+        ...target.takhrijLinks,
+        {
+          bookKey,
+          hadithNumber,
+          chapterName,
+          matchType: 'مطابق باللفظ',
+          ruling: 'مخرج من الكتب التسعة',
+        },
+      ],
+    };
+
+    if (isD1Connected) {
+      await saveD1Hadith(updatedHadith, adminPassword);
+    }
+
     setHadiths((prev) =>
-      prev.map((h) => {
-        if (h.id !== muhallaId) return h;
-        const already = h.takhrijLinks.some(
-          (l) => l.bookKey === bookKey && l.hadithNumber === hadithNumber
-        );
-        if (already) return h;
-        return {
-          ...h,
-          takhrijLinks: [
-            ...h.takhrijLinks,
-            {
-              bookKey,
-              hadithNumber,
-              chapterName,
-              matchType: 'مطابق باللفظ',
-              ruling: 'مخرج من الكتب التسعة',
-            },
-          ],
-        };
-      })
+      prev.map((h) => (h.id === muhallaId ? updatedHadith : h))
     );
   };
 
@@ -298,7 +459,16 @@ export default function App() {
             muhallaHadiths={hadiths}
             nineBooksCorpus={nineBooksCorpus}
             initialQuery={takhrijQuery}
+            isD1Connected={isD1Connected}
+            isAdminUnlocked={isAdminUnlocked}
+            adminPassword={adminPassword}
+            d1BookCounts={d1BookCounts}
             onImportNineBookHadiths={handleImportNineBookHadiths}
+            onNineBooksD1Updated={refreshD1NineBookCounts}
+            onOpenEditorAuth={() => {
+              setEditorTab('hadith');
+              setActiveSection('editor');
+            }}
             onLinkTakhrijToMuhalla={handleLinkTakhrijToMuhalla}
           />
         )}
@@ -345,6 +515,11 @@ export default function App() {
             initialTab={editorTab}
             editingHadithId={editingHadithId}
             editingNarratorId={editingNarratorId}
+            isD1Connected={isD1Connected}
+            isAdminUnlocked={isAdminUnlocked}
+            d1HadithCount={d1HadithCount}
+            onUnlockAdmin={handleUnlockAdmin}
+            onSeedInitialD1={handleSeedInitialD1}
             onSaveHadith={handleSaveHadith}
             onDeleteHadith={handleDeleteHadith}
             onSaveNarrator={handleSaveNarrator}
@@ -390,4 +565,5 @@ export default function App() {
     </div>
   );
 }
+
 

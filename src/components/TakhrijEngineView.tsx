@@ -1,5 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { Search, Upload, RefreshCw, CheckCircle2, Link2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Search,
+  Upload,
+  RefreshCw,
+  CheckCircle2,
+  Link2,
+  Database,
+  Lock,
+  AlertCircle,
+} from 'lucide-react';
 import {
   MuhallaHadith,
   NineBookHadith,
@@ -7,25 +16,38 @@ import {
 } from '../types/hadith';
 import { NINE_BOOKS_META } from '../data/seedData';
 import { computeTakhrijMatch, normalizeArabic } from '../utils/arabic';
+import { searchD1NineBooks, uploadD1NineBookBatch } from '../utils/d1Client';
 
 interface TakhrijEngineViewProps {
   muhallaHadiths: MuhallaHadith[];
   nineBooksCorpus: NineBookHadith[];
   initialQuery: string;
+  isD1Connected: boolean;
+  isAdminUnlocked: boolean;
+  adminPassword: string;
+  d1BookCounts: Record<string, number>;
   onImportNineBookHadiths: (bookKey: NineBookKey, items: NineBookHadith[]) => void;
+  onNineBooksD1Updated: () => Promise<void>;
+  onOpenEditorAuth: () => void;
   onLinkTakhrijToMuhalla: (
     muhallaId: string,
     bookKey: NineBookKey,
     hadithNumber: number,
     chapterName: string
-  ) => void;
+  ) => Promise<void>;
 }
 
 export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
   muhallaHadiths,
   nineBooksCorpus,
   initialQuery,
+  isD1Connected,
+  isAdminUnlocked,
+  adminPassword,
+  d1BookCounts,
   onImportNineBookHadiths,
+  onNineBooksD1Updated,
+  onOpenEditorAuth,
   onLinkTakhrijToMuhalla,
 }) => {
   const [queryText, setQueryText] = useState(
@@ -37,7 +59,61 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
   );
   const [uploadBookKey, setUploadBookKey] = useState<NineBookKey>('bukhari');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isFetchingGithub, setIsFetchingGithub] = useState(false);
+
+  const [d1Results, setD1Results] = useState<NineBookHadith[]>([]);
+  const [isSearchingD1, setIsSearchingD1] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<{
+    bookKey: NineBookKey;
+    items: NineBookHadith[];
+  } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [isUploadingD1, setIsUploadingD1] = useState(false);
+
+  useEffect(() => {
+    if (initialQuery) {
+      setQueryText(initialQuery);
+    }
+  }, [initialQuery]);
+
+  useEffect(() => {
+    if (!targetMuhallaId && muhallaHadiths[0]?.id) {
+      setTargetMuhallaId(muhallaHadiths[0].id);
+    }
+  }, [muhallaHadiths, targetMuhallaId]);
+
+  useEffect(() => {
+    if (!isD1Connected) {
+      setD1Results([]);
+      return;
+    }
+    const cleanQ = normalizeArabic(queryText);
+    if (cleanQ.length < 2) {
+      setD1Results([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearchingD1(true);
+    const timer = setTimeout(async () => {
+      try {
+        const items = await searchD1NineBooks(queryText, selectedBookFilter);
+        if (!cancelled) {
+          setD1Results(items);
+        }
+      } catch {
+        if (!cancelled) setD1Results([]);
+      } finally {
+        if (!cancelled) setIsSearchingD1(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [queryText, selectedBookFilter, isD1Connected]);
 
   const bookCountMap = useMemo(() => {
     const counts = new Map<NineBookKey, number>();
@@ -46,6 +122,16 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
     });
     return counts;
   }, [nineBooksCorpus]);
+
+  const totalIndexedCount = useMemo(() => {
+    let total = 0;
+    NINE_BOOKS_META.forEach((book) => {
+      const localCount = bookCountMap.get(book.key) || 0;
+      const d1Count = isD1Connected ? d1BookCounts[book.key] || 0 : 0;
+      total += Math.max(localCount, d1Count);
+    });
+    return total;
+  }, [bookCountMap, d1BookCounts, isD1Connected]);
 
   const bookMetaMap = useMemo(() => {
     const map = new Map<NineBookKey, string>();
@@ -57,20 +143,30 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
     const cleanQ = normalizeArabic(queryText);
     if (!cleanQ) return [];
 
-    return nineBooksCorpus
+    const mergedMap = new Map<string, NineBookHadith>();
+    d1Results.forEach((item) => {
+      const uid = `${item.bookKey}:${item.idInBook ?? item.id}`;
+      mergedMap.set(uid, item);
+    });
+    nineBooksCorpus.forEach((item) => {
+      const uid = `${item.bookKey}:${item.idInBook ?? item.id}`;
+      if (!mergedMap.has(uid)) {
+        mergedMap.set(uid, item);
+      }
+    });
+
+    return Array.from(mergedMap.values())
       .filter((h) => selectedBookFilter === 'all' || h.bookKey === selectedBookFilter)
       .map((item) => ({
         item,
         match: computeTakhrijMatch(queryText, item.arabicText),
       }))
-      .filter((r) => r.match.score >= 25)
+      .filter((r) => r.match.score >= 20)
       .sort((a, b) => b.match.score - a.match.score)
-      .slice(0, 40);
-  }, [queryText, nineBooksCorpus, selectedBookFilter]);
+      .slice(0, 50);
+  }, [queryText, nineBooksCorpus, d1Results, selectedBookFilter]);
 
   const handleParseHadithJson = (rawJson: unknown, bookKey: NineBookKey) => {
-    // Supports AhmedBaset/hadith-json format: { chapters: [...], hadiths: [{ id, idInBook, chapterId, arabic }] }
-    // as well as direct array of hadith objects
     let rawArray: Record<string, unknown>[] = [];
     const chapterLookup = new Map<number | string, string>();
 
@@ -115,14 +211,48 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
       .filter(Boolean) as NineBookHadith[];
 
     if (parsed.length === 0) {
-      setStatusMessage('لم يتم التعرف على صيغة الأحاديث داخل الملف المحدد.');
+      setErrorMessage('لم يتم التعرف على صيغة الأحاديث داخل الملف المحدد.');
+      setStatusMessage(null);
       return;
     }
 
+    setErrorMessage(null);
     onImportNineBookHadiths(bookKey, parsed);
+    setPendingUpload({ bookKey, items: parsed });
     setStatusMessage(
-      `تم استيراد ${parsed.length.toLocaleString('ar-EG')} حديثاً بنجاح من كتاب ${bookMetaMap.get(bookKey)}.`
+      `تمت قراءة ${parsed.length.toLocaleString('ar-EG')} حديثاً من كتاب ${bookMetaMap.get(bookKey)} للتخريج الفوري.`
     );
+  };
+
+  const handleUploadToD1 = async () => {
+    if (!pendingUpload || !isD1Connected || !isAdminUnlocked) return;
+    setIsUploadingD1(true);
+    setErrorMessage(null);
+    const { bookKey, items } = pendingUpload;
+    const chunkSize = 120;
+    try {
+      for (let i = 0; i < items.length; i += chunkSize) {
+        const chunk = items.slice(i, i + chunkSize);
+        const done = Math.min(i + chunk.length, items.length);
+        setUploadProgress(
+          `جاري الحفظ الدائم في Cloudflare D1: ${done.toLocaleString('ar-EG')} من ${items.length.toLocaleString('ar-EG')} حديث...`
+        );
+        await uploadD1NineBookBatch(bookKey, chunk, adminPassword, i === 0);
+      }
+      await onNineBooksD1Updated();
+      setPendingUpload(null);
+      setUploadProgress(null);
+      setStatusMessage(
+        `تم حفظ ${items.length.toLocaleString('ar-EG')} حديثاً من كتاب ${bookMetaMap.get(bookKey)} في قاعدة بيانات Cloudflare D1 بنجاح.`
+      );
+    } catch (err) {
+      setUploadProgress(null);
+      setErrorMessage(
+        err instanceof Error ? err.message : 'تعذر رفع الكتاب إلى قاعدة بيانات Cloudflare D1'
+      );
+    } finally {
+      setIsUploadingD1(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,7 +264,8 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
         const data = JSON.parse(String(reader.result));
         handleParseHadithJson(data, uploadBookKey);
       } catch {
-        setStatusMessage('حدث خطأ أثناء قراءة ملف JSON؛ تأكد من سلامة صيغة الملف.');
+        setErrorMessage('حدث خطأ أثناء قراءة ملف JSON؛ تأكد من سلامة صيغة الملف.');
+        setStatusMessage(null);
       }
     };
     reader.readAsText(file, 'utf-8');
@@ -144,6 +275,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
   const handleFetchFromGithub = async () => {
     setIsFetchingGithub(true);
     setStatusMessage(null);
+    setErrorMessage(null);
     const urls = [
       `https://raw.githubusercontent.com/bweb-master/alhadith-anawabi-master/main/data/nine-books/${uploadBookKey}.json`,
       `https://raw.githubusercontent.com/bweb-master/alhadith-anawabi-master/main/${uploadBookKey}.json`,
@@ -163,11 +295,33 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
       }
     }
     if (!loaded) {
-      setStatusMessage(
+      setErrorMessage(
         `لم يتم العثور على ${uploadBookKey}.json في المسار العام لمستودع GitHub بعد (أو المستودع خاص). يمكنك رفع الملف محلياً من جهازك مباشرة عبر زر «رفع ملف JSON».`
       );
     }
     setIsFetchingGithub(false);
+  };
+
+  const handleLinkClick = async (
+    item: NineBookHadith
+  ) => {
+    if (!targetMuhallaId) return;
+    setErrorMessage(null);
+    try {
+      await onLinkTakhrijToMuhalla(
+        targetMuhallaId,
+        item.bookKey,
+        item.idInBook || Number(item.id) || 1,
+        item.chapterName
+      );
+      setStatusMessage('تم ربط التخريج بالمسألة وحفظه بنجاح.');
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : 'تعذر حفظ الربط؛ تأكد من تفعيل وضع الباحث بكلمة المرور.'
+      );
+    }
   };
 
   return (
@@ -184,7 +338,8 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
             </p>
           </div>
           <div className="text-xs text-[#6B655E] tabular-nums">
-            إجمالي الأحاديث المفهرسة حالياً: {nineBooksCorpus.length.toLocaleString('ar-EG')} حديث
+            إجمالي الأحاديث المفهرسة حالياً: {totalIndexedCount.toLocaleString('ar-EG')} حديث
+            {isD1Connected ? ' (متصل بـ D1)' : ''}
           </div>
         </div>
 
@@ -222,16 +377,18 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => setSelectedBookFilter('all')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer tabular-nums ${
                 selectedBookFilter === 'all'
                   ? 'bg-[#14532D] text-white'
                   : 'bg-[#F3EFE6] text-[#57534E] hover:text-[#1C1917]'
               }`}
             >
-              جميع الكتب ({nineBooksCorpus.length})
+              جميع الكتب ({totalIndexedCount})
             </button>
             {NINE_BOOKS_META.map((book) => {
-              const count = bookCountMap.get(book.key) || 0;
+              const localCount = bookCountMap.get(book.key) || 0;
+              const d1Count = isD1Connected ? d1BookCounts[book.key] || 0 : 0;
+              const count = Math.max(localCount, d1Count);
               return (
                 <button
                   key={book.key}
@@ -255,10 +412,10 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-0.5">
             <h3 className="text-sm font-semibold text-[#1C1917]">
-              تجربة البيانات الكاملة من مستودعك (الكتب التسعة بصيغة hadith-json)
+              فهرسة الكتب التسعة الكاملة (بصيغة hadith-json)
             </h3>
             <p className="text-xs text-[#6B655E]">
-              يمكنك تحميل ملف أي كتاب (مثل <code className="font-mono">bukhari.json</code> أو <code className="font-mono">malik.json</code>) من جهازك أو جلبه من مستودعك لاختبار التخريج الفوري على آلاف الأحاديث.
+              اختر ملف أي كتاب (مثل <code className="font-mono">bukhari.json</code> أو <code className="font-mono">malik.json</code>) من جهازك أو من GitHub ثم احفظه دائماً في قاعدة بيانات Cloudflare D1.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -287,7 +444,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
 
             <button
               onClick={handleFetchFromGithub}
-              disabled={isFetchingGithub}
+              disabled={isFetchingGithub || isUploadingD1}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#14532D] text-white hover:bg-[#114224] rounded-lg cursor-pointer whitespace-nowrap disabled:opacity-60"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isFetchingGithub ? 'animate-spin' : ''}`} />
@@ -296,10 +453,56 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
           </div>
         </div>
 
+        {/* Save imported book permanently into Cloudflare D1 */}
+        {isD1Connected && pendingUpload && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#D6CEBE] rounded-lg px-4 py-3">
+            <div className="text-xs text-[#1C1917] space-y-0.5">
+              <p className="font-semibold">
+                الملف جاهز للحفظ الدائم في قاعدة البيانات السحابية ({pendingUpload.items.length.toLocaleString('ar-EG')} حديثاً من {bookMetaMap.get(pendingUpload.bookKey)})
+              </p>
+              {uploadProgress && (
+                <p className="text-[#14532D] font-medium tabular-nums">{uploadProgress}</p>
+              )}
+            </div>
+
+            {isAdminUnlocked ? (
+              <button
+                type="button"
+                onClick={handleUploadToD1}
+                disabled={isUploadingD1}
+                className="btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#854D0E] hover:bg-[#713F12] text-white rounded-lg cursor-pointer whitespace-nowrap disabled:opacity-60"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>
+                  {isUploadingD1
+                    ? 'جاري الحفظ في D1...'
+                    : 'حفظ الكتاب في قاعدة بيانات Cloudflare D1'}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenEditorAuth}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#854D0E] rounded-lg cursor-pointer whitespace-nowrap"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>فعّل وضع الباحث بكلمة المرور للحفظ في D1</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {statusMessage && (
           <div className="flex items-center gap-2 text-xs text-[#14532D] bg-white border border-[#E6E0D4] px-3.5 py-2 rounded-lg">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{statusMessage}</span>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 px-3.5 py-2 rounded-lg">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMessage}</span>
           </div>
         )}
       </div>
@@ -309,6 +512,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-[#1C1917] tabular-nums">
             نتائج التخريج ({searchResults.length})
+            {isSearchingD1 ? ' — جاري البحث في Cloudflare D1...' : ''}
           </h3>
           {muhallaHadiths.length > 0 && (
             <div className="flex items-center gap-2 text-xs">
@@ -368,14 +572,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
                       </span>
                       {targetMuhallaId && (
                         <button
-                          onClick={() =>
-                            onLinkTakhrijToMuhalla(
-                              targetMuhallaId,
-                              item.bookKey,
-                              item.idInBook || Number(item.id) || 1,
-                              item.chapterName
-                            )
-                          }
+                          onClick={() => handleLinkClick(item)}
                           disabled={alreadyLinked}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                             alreadyLinked
@@ -406,3 +603,4 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
     </div>
   );
 };
+
