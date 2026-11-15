@@ -15,7 +15,11 @@ import {
   NineBookKey,
 } from '../types/hadith';
 import { NINE_BOOKS_META } from '../data/seedData';
-import { computeTakhrijMatch, normalizeArabic } from '../utils/arabic';
+import {
+  computeTakhrijMatch,
+  normalizeArabic,
+  tokenizeForTakhrij,
+} from '../utils/arabic';
 import { searchD1NineBooks, uploadD1NineBookBatch } from '../utils/d1Client';
 
 interface TakhrijEngineViewProps {
@@ -155,13 +159,16 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
       }
     });
 
+    const meaningfulTokenCount = tokenizeForTakhrij(queryText).length;
+    const minScore = meaningfulTokenCount >= 3 ? 45 : 50;
+
     return Array.from(mergedMap.values())
       .filter((h) => selectedBookFilter === 'all' || h.bookKey === selectedBookFilter)
       .map((item) => ({
         item,
         match: computeTakhrijMatch(queryText, item.arabicText),
       }))
-      .filter((r) => r.match.score >= 20)
+      .filter((r) => r.match.score >= minScore)
       .sort((a, b) => b.match.score - a.match.score)
       .slice(0, 50);
   }, [queryText, nineBooksCorpus, d1Results, selectedBookFilter]);
@@ -220,7 +227,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
     onImportNineBookHadiths(bookKey, parsed);
     setPendingUpload({ bookKey, items: parsed });
     setStatusMessage(
-      `تمت قراءة ${parsed.length.toLocaleString('ar-EG')} حديثاً من كتاب ${bookMetaMap.get(bookKey)} للتخريج الفوري.`
+      `تمت قراءة ${parsed.length.toLocaleString('en-US')} حديثاً من كتاب ${bookMetaMap.get(bookKey)} للتخريج الفوري.`
     );
   };
 
@@ -235,7 +242,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
         const chunk = items.slice(i, i + chunkSize);
         const done = Math.min(i + chunk.length, items.length);
         setUploadProgress(
-          `جاري الحفظ الدائم في Cloudflare D1: ${done.toLocaleString('ar-EG')} من ${items.length.toLocaleString('ar-EG')} حديث...`
+          `جاري الحفظ الدائم في Cloudflare D1: ${done.toLocaleString('en-US')} من ${items.length.toLocaleString('en-US')} حديث...`
         );
         await uploadD1NineBookBatch(bookKey, chunk, adminPassword, i === 0);
       }
@@ -243,7 +250,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
       setPendingUpload(null);
       setUploadProgress(null);
       setStatusMessage(
-        `تم حفظ ${items.length.toLocaleString('ar-EG')} حديثاً من كتاب ${bookMetaMap.get(bookKey)} في قاعدة بيانات Cloudflare D1 بنجاح.`
+        `تم حفظ ${items.length.toLocaleString('en-US')} حديثاً من كتاب ${bookMetaMap.get(bookKey)} في قاعدة بيانات Cloudflare D1 بنجاح.`
       );
     } catch (err) {
       setUploadProgress(null);
@@ -338,7 +345,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
             </p>
           </div>
           <div className="text-xs text-[#6B655E] tabular-nums">
-            إجمالي الأحاديث المفهرسة حالياً: {totalIndexedCount.toLocaleString('ar-EG')} حديث
+            إجمالي الأحاديث المفهرسة حالياً: {totalIndexedCount.toLocaleString('en-US')} حديث
             {isD1Connected ? ' (متصل بـ D1)' : ''}
           </div>
         </div>
@@ -458,7 +465,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#D6CEBE] rounded-lg px-4 py-3">
             <div className="text-xs text-[#1C1917] space-y-0.5">
               <p className="font-semibold">
-                الملف جاهز للحفظ الدائم في قاعدة البيانات السحابية ({pendingUpload.items.length.toLocaleString('ar-EG')} حديثاً من {bookMetaMap.get(pendingUpload.bookKey)})
+                الملف جاهز للحفظ الدائم في قاعدة البيانات السحابية ({pendingUpload.items.length.toLocaleString('en-US')} حديثاً من {bookMetaMap.get(pendingUpload.bookKey)})
               </p>
               {uploadProgress && (
                 <p className="text-[#14532D] font-medium tabular-nums">{uploadProgress}</p>

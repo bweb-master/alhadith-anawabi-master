@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { LogIn, Lock, Unlock, X } from 'lucide-react';
 import {
   MuhallaHadith,
   Narrator,
@@ -94,6 +94,33 @@ export default function App() {
   });
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
 
+  // Header "دخول" dropdown state
+  const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
+  const [loginPasswordInput, setLoginPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isCheckingLogin, setIsCheckingLogin] = useState(false);
+  const loginMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isLoginDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (loginMenuRef.current && !loginMenuRef.current.contains(e.target as Node)) {
+        setIsLoginDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsLoginDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isLoginDropdownOpen]);
+
   const refreshD1NineBookCounts = useCallback(async () => {
     const counts = await fetchD1NineBookCounts();
     setD1BookCounts(counts);
@@ -186,6 +213,10 @@ export default function App() {
   }, [narrators]);
 
   const handleUnlockAdmin = async (password: string): Promise<boolean> => {
+    if (!isD1Connected) {
+      setIsAdminUnlocked(true);
+      return true;
+    }
     const ok = await verifyD1AdminPassword(password);
     if (ok) {
       setAdminPassword(password);
@@ -198,6 +229,30 @@ export default function App() {
       return true;
     }
     return false;
+  };
+
+  const handleHeaderLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    if (isD1Connected && !loginPasswordInput.trim()) {
+      setLoginError('يرجى إدخال كلمة مرور الباحث.');
+      return;
+    }
+    setIsCheckingLogin(true);
+    try {
+      const ok = await handleUnlockAdmin(loginPasswordInput.trim());
+      if (ok) {
+        setLoginPasswordInput('');
+        setIsLoginDropdownOpen(false);
+        setEditorTab('hadith');
+        setEditingHadithId('__NEW__');
+        setActiveSection('editor');
+      } else {
+        setLoginError('كلمة مرور الباحث غير صحيحة.');
+      }
+    } finally {
+      setIsCheckingLogin(false);
+    }
   };
 
   const handleSeedInitialD1 = async (): Promise<void> => {
@@ -359,12 +414,17 @@ export default function App() {
       {/* Strict 3-Zone Top Navigation Header with Clear Animated Buttons */}
       <header className="sticky top-0 z-30 bg-[#FBF9F5]/95 backdrop-blur-xs border-b border-[#D6CEBE]">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-6">
-          {/* Zone 1: Single-line Brand Wordmark */}
+          {/* Zone 1: Transparent Platform Logo at Top-Right */}
           <button
             onClick={() => setActiveSection('home')}
-            className="btn-hover-motion font-hadith text-xl sm:text-2xl font-bold text-[#14532D] whitespace-nowrap shrink-0 cursor-pointer"
+            className="btn-hover-motion flex items-center shrink-0 cursor-pointer bg-transparent p-0"
+            aria-label="الرئيسية"
           >
-            مرويات ابن حزم من طريق الأندلسيين
+            <img
+              src="/assets/aistudio/logo_65694aac.png"
+              alt="شعار المنصة"
+              className="h-14 sm:h-16 w-auto object-contain bg-transparent mix-blend-multiply select-none"
+            />
           </button>
 
           {/* Zone 2: Clear Single-Line Navigation Buttons with Hover Motion */}
@@ -387,23 +447,93 @@ export default function App() {
             })}
           </nav>
 
-          {/* Zone 3: 1 Primary Action */}
-          <div className="flex items-center shrink-0">
+          {/* Zone 3: Researcher Login Dropdown -> Editor */}
+          <div className="relative flex items-center shrink-0" ref={loginMenuRef}>
             <button
+              type="button"
               onClick={() => {
-                setEditorTab('hadith');
-                setEditingHadithId('__NEW__');
-                setActiveSection('editor');
+                if (isAdminUnlocked) {
+                  setEditorTab('hadith');
+                  setEditingHadithId('__NEW__');
+                  setActiveSection('editor');
+                } else {
+                  setLoginError(null);
+                  setIsLoginDropdownOpen((prev) => !prev);
+                }
               }}
-              className={`btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`btn-hover-motion inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer ${
                 activeSection === 'editor'
                   ? 'bg-[#854D0E] text-white shadow-xs'
                   : 'bg-[#854D0E] hover:bg-[#713F12] text-white'
               }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>إضافة وتعديل</span>
+              {isAdminUnlocked ? (
+                <>
+                  <Unlock className="w-4 h-4" />
+                  <span>التعديلات</span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-4 h-4" />
+                  <span>دخول</span>
+                </>
+              )}
             </button>
+
+            {isLoginDropdownOpen && !isAdminUnlocked && (
+              <div className="absolute left-0 top-full mt-2 w-80 bg-white border border-[#D6CEBE] rounded-xl shadow-lg p-5 z-50 space-y-4">
+                <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[#E6E0D4]">
+                  <div className="flex items-center gap-2 text-sm font-bold text-[#1C1917]">
+                    <Lock className="w-4 h-4 text-[#854D0E]" />
+                    <span>دخول الباحث للتحرير</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsLoginDropdownOpen(false)}
+                    className="p-1 text-[#6B655E] hover:text-[#1C1917] rounded-md cursor-pointer"
+                    aria-label="إغلاق"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleHeaderLoginSubmit} className="space-y-3">
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-[#44403C]">
+                      كلمة مرور الباحث
+                    </span>
+                    <input
+                      type="password"
+                      autoFocus
+                      value={loginPasswordInput}
+                      onChange={(e) => setLoginPasswordInput(e.target.value)}
+                      placeholder="أدخل كلمة المرور..."
+                      className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+                    />
+                  </label>
+
+                  {!isD1Connected && (
+                    <p className="text-[11px] text-[#6B655E] leading-relaxed">
+                      في وضع التجربة المحلي يمكنك الضغط على «دخول» مباشرة لتجربة صفحة التعديلات.
+                    </p>
+                  )}
+
+                  {loginError && (
+                    <p className="text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-md">
+                      {loginError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isCheckingLogin}
+                    className="btn-hover-motion w-full py-2.5 text-sm font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer disabled:opacity-60"
+                  >
+                    {isCheckingLogin ? 'جاري التحقق...' : 'دخول وفتح صفحة التعديلات'}
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
 
@@ -435,7 +565,15 @@ export default function App() {
             hadithsCount={hadiths.length}
             andalusiansCount={andalusianCount}
             nineBooksCount={NINE_BOOKS_META.length}
-            onNavigate={(target) => setActiveSection(target)}
+            onNavigate={(target) => {
+              if (target === 'editor' && !isAdminUnlocked) {
+                setLoginError(null);
+                setIsLoginDropdownOpen(true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                setActiveSection(target);
+              }
+            }}
           />
         )}
 
@@ -478,8 +616,14 @@ export default function App() {
             onImportNineBookHadiths={handleImportNineBookHadiths}
             onNineBooksD1Updated={refreshD1NineBookCounts}
             onOpenEditorAuth={() => {
-              setEditorTab('hadith');
-              setActiveSection('editor');
+              if (!isAdminUnlocked) {
+                setLoginError(null);
+                setIsLoginDropdownOpen(true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                setEditorTab('hadith');
+                setActiveSection('editor');
+              }
             }}
             onLinkTakhrijToMuhalla={handleLinkTakhrijToMuhalla}
           />
@@ -547,7 +691,7 @@ export default function App() {
       <footer className="border-t border-[#E6E0D4] bg-[#FBF9F5] py-6 mt-10">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-4 text-sm text-[#6B655E]">
           <span>
-            مرويات ابن حزم من طريق الأندلسيين — بحث ماستر الشريعة والابتكار الرقمي
+            مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي · تحت إشراف الدكتور عبد الكريم خلفي · إعداد الطلبة الباحثين فوج 2025-2027
           </span>
           <div className="flex items-center gap-5">
             <button

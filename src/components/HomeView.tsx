@@ -9,7 +9,11 @@ import {
   ArrowLeft,
   Info,
 } from 'lucide-react';
-import { CornerArabesque, IslamicDivider } from './IslamicOrnament';
+import {
+  CornerArabesque,
+  IslamicDivider,
+  OctagonalHalo,
+} from './IslamicOrnament';
 
 export type NavTarget =
   | 'muhalla'
@@ -52,7 +56,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       title: 'تخريج الأحاديث',
       subtitle: `${nineBooksCount} مصادر حديثية`,
       description:
-        'تخريج آلي ونصي بالاعتماد على الكتب التسعة عبر تجريد التشكيل وتوحيد الهمزات، مع إمكانية رفع ملفات مستودعك مباشرة.',
+        'تخريج آلي ونصي بالاعتماد على الكتب التسعة عبر تجريد التشكيل وتوحيد الهمزات، مع البحث الفوري في قاعدة البيانات.',
       icon: <SearchCheck className="w-6 h-6" />,
     },
     {
@@ -81,10 +85,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
     },
     {
       id: 'editor',
-      title: 'التحرير وإضافة الرواة',
-      subtitle: 'تحديث وتصدير JSON',
+      title: 'لوحة الباحث والتحرير',
+      subtitle: 'إدارة وتحديث البيانات',
       description:
-        'لوحة بحثية مرنة تتيح إضافة أحاديث جديدة من المحلى أو رواة أندلسيين وتعديل جميع الحقول وتصديرها إلى مستودع GitHub.',
+        'مساحة خاصة للباحث لإضافة أحاديث جديدة من المحلى أو رواة أندلسيين وتنقيح الشروح والحقول وحفظها مباشرة في السحابة.',
       icon: <Database className="w-6 h-6" />,
     },
   ];
@@ -103,114 +107,142 @@ export const HomeView: React.FC<HomeViewProps> = ({
     {
       num: '03',
       title: 'بناء مدونة حديثية مفتوحة وقابلة للتطوير',
-      body: 'توفير بنية بيانات مهيكلة تتيح للباحث إضافة الرواة الأندلسيين، تنقيح النصوص، ومزامنتها مع مستودع GitHub والنشر السحابي السريع.',
+      body: 'توفير بنية بيانات مهيكلة تتيح للباحث إضافة الرواة الأندلسيين وتنقيح النصوص وفهرسة كتب السنة بأعلى معايير الدقة البحثية.',
+    },
+  ];
+
+  const summaryHighlights = [
+    {
+      value: hadithsCount.toLocaleString('en-US'),
+      label: 'مسائل محققة من المحلّى',
+      target: 'muhalla' as NavTarget,
+    },
+    {
+      value: andalusiansCount.toLocaleString('en-US'),
+      label: 'راوياً وعَلَماً أندلسياً',
+      target: 'narrators' as NavTarget,
+    },
+    {
+      value: nineBooksCount.toLocaleString('en-US'),
+      label: 'دواوين الكتب التسعة للتخريج',
+      target: 'takhrij' as NavTarget,
+    },
+    {
+      value: 'تفاعلية',
+      label: 'شجرة الإسناد وتحليل المدار',
+      target: 'tree' as NavTarget,
     },
   ];
 
   return (
-    <div className="space-y-10">
-      {/* Hero Banner with Subtle Islamic Geometric Pattern */}
-      <section className="islamic-hero-pattern relative overflow-hidden border border-[#E6E0D4] rounded-2xl p-8 sm:p-12 lg:p-14">
-        <CornerArabesque className="absolute -top-3 -left-3 text-[#854D0E]/15 w-28 h-28" />
-        <CornerArabesque className="absolute -bottom-3 -right-3 text-[#14532D]/15 w-28 h-28" />
+    <div className="space-y-12">
+      {/* Modern Responsive Hero Section with Subtle Pure Octagonal Geometry */}
+      <section className="islamic-hero-pattern relative overflow-hidden border border-[#E6E0D4] rounded-2xl shadow-xs">
+        <CornerArabesque className="absolute -top-4 -left-4 text-[#854D0E]/8 w-32 h-32" />
+        <CornerArabesque className="absolute -bottom-4 -right-4 text-[#14532D]/8 w-32 h-32" />
 
-        <div className="relative max-w-3xl space-y-6">
-          <p className="text-sm font-medium text-[#854D0E]">
-            بحث ماستر الشريعة والابتكار الرقمي · دراسة حديثية ورقمية مقارنة
-          </p>
+        <div className="relative px-6 py-8 sm:px-10 sm:py-12 lg:px-14 lg:py-14">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-12">
+            {/* Editorial Headline, Supervision Attribution & Primary CTAs */}
+            <div className="flex-1 text-center lg:text-right space-y-5 max-w-3xl">
+              <p className="text-sm font-semibold tracking-wide text-[#854D0E]">
+                مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي · دراسة حديثية ورقمية مقارنة
+              </p>
 
-          <h1 className="font-hadith text-3xl sm:text-4xl lg:text-5xl font-bold text-[#1C1917] leading-tight">
-            مرويات ابن حزم من طريق الأندلسيين
-          </h1>
+              <h1 className="font-hadith text-3xl sm:text-4xl lg:text-5xl font-bold text-[#1C1917] leading-tight">
+                مرويات ابن حزم من طريق الأندلسيين
+              </h1>
 
-          <p className="text-base sm:text-lg text-[#44403C] leading-relaxed max-w-2xl">
-            منصة علمية رقمية تعنى بجمع وتحقيق مرويات الإمام أبي محمد بن حزم الأندلسي في كتابه{' '}
-            <span className="font-semibold text-[#14532D]">«المحلّى بالآثار»</span>، وتخريجها بالاعتماد على الكتب التسعة، مع دراسة شاملة للرواة الأندلسيين ورسم شجرة الإسناد وغريب الحديث وفقهه.
-          </p>
+              <p className="text-base sm:text-lg text-[#44403C] leading-relaxed max-w-2xl mx-auto lg:mx-0">
+                منصة علمية رقمية تعنى بجمع وتحقيق مرويات الإمام أبي محمد بن حزم الأندلسي في كتابه{' '}
+                <span className="font-semibold text-[#14532D]">«المحلّى بالآثار»</span>، وتخريجها بالاعتماد على الكتب التسعة، مع دراسة شاملة للرواة الأندلسيين ورسم شجرة الإسناد وغريب الحديث وفقهه.
+              </p>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              onClick={() => onNavigate('muhalla')}
-              className="btn-hover-motion inline-flex items-center gap-2 px-6 py-3 text-base font-medium bg-[#14532D] hover:bg-[#114224] text-white rounded-xl cursor-pointer whitespace-nowrap"
-            >
-              <span>استعراض مرويات المحلّى</span>
-              <ArrowLeft className="w-4 h-4" />
-            </button>
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-5 gap-y-1.5 text-sm font-semibold text-[#14532D]">
+                <span>تحت إشراف الدكتور عبد الكريم خلفي</span>
+                <span className="text-[#854D0E]/50 hidden sm:inline" aria-hidden="true">·</span>
+                <span className="text-[#57534E] font-medium">
+                  من إعداد الطلبة الباحثين فوج 2025-2027
+                </span>
+              </div>
 
-            <button
-              onClick={() => onNavigate('takhrij')}
-              className="btn-hover-motion inline-flex items-center gap-2 px-6 py-3 text-base font-medium bg-white border border-[#D6CEBE] hover:border-[#14532D] text-[#1C1917] rounded-xl cursor-pointer whitespace-nowrap"
-            >
-              <span>بدء تخريج الأحاديث</span>
-            </button>
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-2">
+                <button
+                  onClick={() => onNavigate('muhalla')}
+                  className="btn-hover-motion inline-flex items-center gap-2 px-6 py-3 text-base font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-xl shadow-xs cursor-pointer whitespace-nowrap"
+                >
+                  <span>استعراض مرويات المحلّى</span>
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
 
-            <button
-              onClick={() => onNavigate('about')}
-              className="btn-hover-motion inline-flex items-center gap-2 px-5 py-3 text-base font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-xl cursor-pointer whitespace-nowrap"
-            >
-              <Info className="w-4 h-4 text-[#854D0E]" />
-              <span>حول المنصة</span>
-            </button>
+                <button
+                  onClick={() => onNavigate('takhrij')}
+                  className="btn-hover-motion inline-flex items-center gap-2 px-6 py-3 text-base font-semibold bg-white border border-[#D6CEBE] hover:border-[#14532D] hover:bg-[#EEF6F1] text-[#1C1917] rounded-xl cursor-pointer whitespace-nowrap"
+                >
+                  <span>بدء تخريج الأحاديث</span>
+                </button>
+
+                <button
+                  onClick={() => onNavigate('about')}
+                  className="btn-hover-motion inline-flex items-center gap-2 px-5 py-3 text-base font-medium bg-[#F3EFE6]/90 hover:bg-[#EEF6F1] text-[#1C1917] rounded-xl cursor-pointer whitespace-nowrap"
+                >
+                  <Info className="w-4 h-4 text-[#854D0E]" />
+                  <span>حول المنصة</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Subtle Octagonal Geometric Crest on Desktop */}
+            <div className="hidden lg:flex items-center justify-center shrink-0">
+              <OctagonalHalo className="w-56 h-56 text-[#14532D]/12" />
+            </div>
           </div>
         </div>
-      </section>
 
-      {/* Platform Objectives & Overview */}
-      <section className="space-y-6">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-bold text-[#1C1917]">
-            أهداف المنصة ومرتكزاتها العلمية
-          </h2>
-          <p className="text-base text-[#57534E] max-w-3xl">
-            تسعى المنصة إلى تقديم نموذج تطبيقي يخدم التراث الحديثي الأندلسي بأدوات المعالجة الرقمية المعاصرة.
-          </p>
-        </div>
-
-        <IslamicDivider />
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {objectives.map((obj) => (
-            <div
-              key={obj.num}
-              className="card-hover-lift bg-white border border-[#E6E0D4] hover:border-[#854D0E]/45 rounded-xl p-6 space-y-3"
+        {/* Clean Integrated Research Summary Strip */}
+        <div className="relative border-t border-[#E6E0D4] bg-[#FBF9F5]/85 grid grid-cols-2 lg:grid-cols-4 divide-x divide-x-reverse divide-[#E6E0D4]">
+          {summaryHighlights.map((stat, idx) => (
+            <button
+              key={idx}
+              onClick={() => onNavigate(stat.target)}
+              className="group px-5 py-4 text-center lg:text-right hover:bg-[#EEF6F1] transition-colors cursor-pointer"
             >
-              <span className="font-mono text-sm font-semibold text-[#854D0E] tabular-nums block">
-                {obj.num}
-              </span>
-              <h3 className="text-lg font-bold text-[#1C1917] leading-snug">
-                {obj.title}
-              </h3>
-              <p className="text-base text-[#44403C] leading-relaxed">
-                {obj.body}
-              </p>
-            </div>
+              <div className="font-hadith text-2xl sm:text-3xl font-bold text-[#14532D] tabular-nums group-hover:text-[#114224] transition-colors">
+                {stat.value}
+              </div>
+              <div className="text-xs sm:text-sm text-[#57534E] mt-0.5">
+                {stat.label}
+              </div>
+            </button>
           ))}
         </div>
       </section>
 
-      {/* Interactive Modules Grid with Hover Motion */}
+      {/* Interactive Modules Grid */}
       <section className="space-y-6">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-bold text-[#1C1917]">
-            أقسام المنصة وأدوات البحث التفاعلية
-          </h2>
-          <p className="text-base text-[#57534E]">
-            اختر أي قسم من البطاقات التالية لتجربة الأدوات الحديثية والبرمجية مباشرة.
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-1.5">
+            <h2 className="text-2xl font-bold text-[#1C1917]">
+              أقسام المنصة وأدوات البحث التفاعلية
+            </h2>
+            <p className="text-base text-[#57534E]">
+              اختر أي قسم للانتقال المباشر إلى المدونة الحديثية أو أدوات التخريج والشبكات الإسنادية.
+            </p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {featureCards.map((card, idx) => (
             <button
               key={idx}
               onClick={() => onNavigate(card.id)}
-              className="card-hover-lift group relative overflow-hidden text-right bg-white border border-[#E6E0D4] hover:border-[#14532D] rounded-xl p-6 space-y-4 cursor-pointer flex flex-col justify-between"
+              className="card-hover-lift group relative overflow-hidden text-right bg-white border border-[#E6E0D4] hover:border-[#14532D] hover:bg-[#EEF6F1] rounded-2xl p-6 space-y-4 cursor-pointer flex flex-col justify-between"
             >
-              <CornerArabesque className="absolute -bottom-3 -left-3 text-[#854D0E]/10 group-hover:text-[#14532D]/20 transition-colors w-20 h-20" />
+              <CornerArabesque className="absolute -bottom-4 -left-4 text-[#854D0E]/7 group-hover:text-[#14532D]/12 transition-colors w-24 h-24" />
 
-              <div className="space-y-3 relative">
+              <div className="space-y-3.5 relative">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="w-11 h-11 rounded-lg bg-[#F3EFE6] group-hover:bg-[#14532D] text-[#14532D] group-hover:text-white flex items-center justify-center transition-colors">
+                  <div className="w-12 h-12 rounded-xl bg-[#F3EFE6] group-hover:bg-[#14532D] text-[#14532D] group-hover:text-white flex items-center justify-center transition-colors">
                     {card.icon}
                   </div>
                   <span className="text-sm text-[#854D0E] font-medium tabular-nums">
@@ -235,6 +267,41 @@ export const HomeView: React.FC<HomeViewProps> = ({
           ))}
         </div>
       </section>
+
+      {/* Platform Objectives & Overview */}
+      <section className="space-y-6">
+        <div className="space-y-1.5">
+          <h2 className="text-2xl font-bold text-[#1C1917]">
+            أهداف المنصة ومرتكزاتها العلمية
+          </h2>
+          <p className="text-base text-[#57534E] max-w-3xl">
+            تسعى المنصة إلى تقديم نموذج تطبيقي يخدم التراث الحديثي الأندلسي بأدوات المعالجة الرقمية المعاصرة.
+          </p>
+        </div>
+
+        <IslamicDivider />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {objectives.map((obj) => (
+            <div
+              key={obj.num}
+              className="card-hover-lift relative overflow-hidden bg-white border border-[#E6E0D4] hover:border-[#14532D]/45 hover:bg-[#EEF6F1] rounded-2xl p-6 space-y-3"
+            >
+              <CornerArabesque className="absolute -bottom-5 -left-5 text-[#854D0E]/6 w-24 h-24" />
+              <span className="font-mono text-sm font-semibold text-[#854D0E] tabular-nums block relative">
+                {obj.num}
+              </span>
+              <h3 className="text-lg font-bold text-[#1C1917] leading-snug relative">
+                {obj.title}
+              </h3>
+              <p className="text-base text-[#44403C] leading-relaxed relative">
+                {obj.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 };
+
