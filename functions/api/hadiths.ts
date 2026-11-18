@@ -1,8 +1,8 @@
 import {
+  authenticateRequest,
   jsonResponse,
   PagesContext,
   requireDb,
-  verifyAdminPassword,
 } from '../../lib/cf-d1';
 import type { MuhallaHadith } from '../../src/types/hadith';
 
@@ -57,8 +57,10 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   const dbOrRes = requireDb(context.env);
   if (dbOrRes instanceof Response) return dbOrRes;
 
-  const authError = verifyAdminPassword(context.request, context.env);
-  if (authError) return authError;
+  const auth = await authenticateRequest(context.request, context.env, {
+    anyPermission: ['edit_hadiths', 'edit_muhalla_direct', 'link_takhrij'],
+  });
+  if ('error' in auth) return auth.error;
 
   const body = (await context.request.json()) as
     | { hadith?: MuhallaHadith; hadiths?: MuhallaHadith[] }
@@ -120,8 +122,10 @@ export async function onRequestDelete(context: PagesContext): Promise<Response> 
   const dbOrRes = requireDb(context.env);
   if (dbOrRes instanceof Response) return dbOrRes;
 
-  const authError = verifyAdminPassword(context.request, context.env);
-  if (authError) return authError;
+  const auth = await authenticateRequest(context.request, context.env, {
+    anyPermission: ['delete_records'],
+  });
+  if ('error' in auth) return auth.error;
 
   const url = new URL(context.request.url);
   const id = url.searchParams.get('id');

@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Link2,
   Database,
-  Lock,
   AlertCircle,
 } from 'lucide-react';
 import {
@@ -20,19 +19,23 @@ import {
   normalizeArabic,
   tokenizeForTakhrij,
 } from '../utils/arabic';
-import { searchD1NineBooks, uploadD1NineBookBatch } from '../utils/d1Client';
+import {
+  D1Credentials,
+  searchD1NineBooks,
+  uploadD1NineBookBatch,
+} from '../utils/d1Client';
 
 interface TakhrijEngineViewProps {
   muhallaHadiths: MuhallaHadith[];
   nineBooksCorpus: NineBookHadith[];
   initialQuery: string;
   isD1Connected: boolean;
-  isAdminUnlocked: boolean;
-  adminPassword: string;
+  canUploadBooks: boolean;
+  canLinkMuhalla: boolean;
+  authCreds: D1Credentials | null;
   d1BookCounts: Record<string, number>;
   onImportNineBookHadiths: (bookKey: NineBookKey, items: NineBookHadith[]) => void;
   onNineBooksD1Updated: () => Promise<void>;
-  onOpenEditorAuth: () => void;
   onLinkTakhrijToMuhalla: (
     muhallaId: string,
     bookKey: NineBookKey,
@@ -46,12 +49,12 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
   nineBooksCorpus,
   initialQuery,
   isD1Connected,
-  isAdminUnlocked,
-  adminPassword,
+  canUploadBooks,
+  canLinkMuhalla,
+  authCreds,
   d1BookCounts,
   onImportNineBookHadiths,
   onNineBooksD1Updated,
-  onOpenEditorAuth,
   onLinkTakhrijToMuhalla,
 }) => {
   const [queryText, setQueryText] = useState(
@@ -243,7 +246,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
   };
 
   const handleUploadToD1 = async () => {
-    if (!pendingUpload || !isD1Connected || !isAdminUnlocked) return;
+    if (!pendingUpload || !isD1Connected || !canUploadBooks || !authCreds) return;
     setIsUploadingD1(true);
     setErrorMessage(null);
     const { bookKey, items } = pendingUpload;
@@ -255,7 +258,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
         setUploadProgress(
           `جاري الحفظ الدائم في Cloudflare D1: ${done.toLocaleString('en-US')} من ${items.length.toLocaleString('en-US')} حديث...`
         );
-        await uploadD1NineBookBatch(bookKey, chunk, adminPassword, i === 0);
+        await uploadD1NineBookBatch(bookKey, chunk, authCreds, i === 0);
       }
       await onNineBooksD1Updated();
       searchCacheRef.current.clear();
@@ -426,65 +429,65 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
         </div>
       </div>
 
-      {/* Import Real Nine-Books JSON from User's Repo or Local Computer */}
-      <div className="bg-[#F3EFE6]/60 border border-[#E6E0D4] rounded-xl p-5 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <h3 className="text-sm font-semibold text-[#1C1917]">
-              فهرسة الكتب التسعة الكاملة (بصيغة hadith-json)
-            </h3>
-            <p className="text-xs text-[#6B655E]">
-              اختر ملف أي كتاب (مثل <code className="font-mono">bukhari.json</code> أو <code className="font-mono">malik.json</code>) من جهازك أو من GitHub ثم احفظه دائماً في قاعدة بيانات Cloudflare D1.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={uploadBookKey}
-              onChange={(e) => setUploadBookKey(e.target.value as NineBookKey)}
-              className="px-3 py-2 text-xs bg-white border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
-            >
-              {NINE_BOOKS_META.map((b) => (
-                <option key={b.key} value={b.key}>
-                  {b.arabicName} ({b.key}.json)
-                </option>
-              ))}
-            </select>
-
-            <label className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-white border border-[#E6E0D4] hover:border-[#14532D] text-[#1C1917] rounded-lg cursor-pointer whitespace-nowrap">
-              <Upload className="w-3.5 h-3.5" />
-              <span>رفع ملف JSON من جهازك</span>
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </label>
-
-            <button
-              onClick={handleFetchFromGithub}
-              disabled={isFetchingGithub || isUploadingD1}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#14532D] text-white hover:bg-[#114224] rounded-lg cursor-pointer whitespace-nowrap disabled:opacity-60"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isFetchingGithub ? 'animate-spin' : ''}`} />
-              <span>جلب من GitHub</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Save imported book permanently into Cloudflare D1 */}
-        {isD1Connected && pendingUpload && (
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#D6CEBE] rounded-lg px-4 py-3">
-            <div className="text-xs text-[#1C1917] space-y-0.5">
-              <p className="font-semibold">
-                الملف جاهز للحفظ الدائم في قاعدة البيانات السحابية ({pendingUpload.items.length.toLocaleString('en-US')} حديثاً من {bookMetaMap.get(pendingUpload.bookKey)})
+      {/* Import Real Nine-Books JSON (Visible only when permitted) */}
+      {canUploadBooks && (
+        <div className="bg-[#F3EFE6]/60 border border-[#E6E0D4] rounded-xl p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-semibold text-[#1C1917]">
+                فهرسة الكتب التسعة الكاملة (بصيغة hadith-json)
+              </h3>
+              <p className="text-xs text-[#6B655E]">
+                اختر ملف أي كتاب (مثل <code className="font-mono">bukhari.json</code> أو <code className="font-mono">malik.json</code>) من جهازك أو من GitHub ثم احفظه دائماً في قاعدة بيانات Cloudflare D1.
               </p>
-              {uploadProgress && (
-                <p className="text-[#14532D] font-medium tabular-nums">{uploadProgress}</p>
-              )}
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={uploadBookKey}
+                onChange={(e) => setUploadBookKey(e.target.value as NineBookKey)}
+                className="px-3 py-2 text-xs bg-white border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+              >
+                {NINE_BOOKS_META.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.arabicName} ({b.key}.json)
+                  </option>
+                ))}
+              </select>
 
-            {isAdminUnlocked ? (
+              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-white border border-[#E6E0D4] hover:border-[#14532D] text-[#1C1917] rounded-lg cursor-pointer whitespace-nowrap">
+                <Upload className="w-3.5 h-3.5" />
+                <span>رفع ملف JSON من جهازك</span>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                onClick={handleFetchFromGithub}
+                disabled={isFetchingGithub || isUploadingD1}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#14532D] text-white hover:bg-[#114224] rounded-lg cursor-pointer whitespace-nowrap disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isFetchingGithub ? 'animate-spin' : ''}`} />
+                <span>جلب من GitHub</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Save imported book permanently into Cloudflare D1 */}
+          {isD1Connected && pendingUpload && (
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#D6CEBE] rounded-lg px-4 py-3">
+              <div className="text-xs text-[#1C1917] space-y-0.5">
+                <p className="font-semibold">
+                  الملف جاهز للحفظ الدائم في قاعدة البيانات السحابية ({pendingUpload.items.length.toLocaleString('en-US')} حديثاً من {bookMetaMap.get(pendingUpload.bookKey)})
+                </p>
+                {uploadProgress && (
+                  <p className="text-[#14532D] font-medium tabular-nums">{uploadProgress}</p>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={handleUploadToD1}
@@ -498,33 +501,24 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
                     : 'حفظ الكتاب في قاعدة بيانات Cloudflare D1'}
                 </span>
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenEditorAuth}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#854D0E] rounded-lg cursor-pointer whitespace-nowrap"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>فعّل وضع الباحث بكلمة المرور للحفظ في D1</span>
-              </button>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {statusMessage && (
-          <div className="flex items-center gap-2 text-xs text-[#14532D] bg-white border border-[#E6E0D4] px-3.5 py-2 rounded-lg">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{statusMessage}</span>
-          </div>
-        )}
+          {statusMessage && (
+            <div className="flex items-center gap-2 text-xs text-[#14532D] bg-white border border-[#E6E0D4] px-3.5 py-2 rounded-lg">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{statusMessage}</span>
+            </div>
+          )}
 
-        {errorMessage && (
-          <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 px-3.5 py-2 rounded-lg">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-      </div>
+          {errorMessage && (
+            <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 px-3.5 py-2 rounded-lg">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Results List */}
       <div className="space-y-3">
@@ -533,7 +527,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
             نتائج التخريج ({searchResults.length})
             {isSearchingD1 ? ' — جاري البحث في Cloudflare D1...' : ''}
           </h3>
-          {muhallaHadiths.length > 0 && (
+          {canLinkMuhalla && muhallaHadiths.length > 0 && (
             <div className="flex items-center gap-2 text-xs">
               <span className="text-[#6B655E]">ربط النتائج بمسألة المحلى:</span>
               <select
@@ -589,7 +583,7 @@ export const TakhrijEngineView: React.FC<TakhrijEngineViewProps> = ({
                       <span className="text-xs font-medium text-[#854D0E] tabular-nums">
                         {match.matchLevel} ({match.score}%)
                       </span>
-                      {targetMuhallaId && (
+                      {canLinkMuhalla && targetMuhallaId && (
                         <button
                           onClick={() => handleLinkClick(item)}
                           disabled={alreadyLinked}

@@ -1,11 +1,11 @@
 import {
+  authenticateRequest,
   D1Database,
   jsonResponse,
   normalizeArabicServer,
   PagesContext,
   requireDb,
   tokenizeArabicServer,
-  verifyAdminPassword,
 } from '../../lib/cf-d1';
 import type { NineBookHadith, NineBookKey } from '../../src/types/hadith';
 
@@ -99,8 +99,10 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   const dbOrRes = requireDb(context.env);
   if (dbOrRes instanceof Response) return dbOrRes;
 
-  const authError = verifyAdminPassword(context.request, context.env);
-  if (authError) return authError;
+  const auth = await authenticateRequest(context.request, context.env, {
+    anyPermission: ['upload_nine_books'],
+  });
+  if ('error' in auth) return auth.error;
 
   const body = (await context.request.json()) as {
     bookKey: NineBookKey;

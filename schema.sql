@@ -48,3 +48,15 @@ CREATE VIRTUAL TABLE IF NOT EXISTS nine_books_fts USING fts5(
   normalized_text,
   arabic_text UNINDEXED
 );
+
+CREATE TABLE IF NOT EXISTS researchers (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  full_name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'assistant',
+  permissions_json TEXT NOT NULL DEFAULT '[]',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+

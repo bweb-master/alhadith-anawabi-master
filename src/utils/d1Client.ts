@@ -1,4 +1,18 @@
-import { MuhallaHadith, Narrator, NineBookHadith, NineBookKey } from '../types/hadith';
+import {
+  AuthenticatedUser,
+  MuhallaHadith,
+  Narrator,
+  NineBookHadith,
+  NineBookKey,
+  ResearcherAccount,
+  ResearcherPermission,
+  ResearcherRole,
+} from '../types/hadith';
+
+export interface D1Credentials {
+  username: string;
+  password: string;
+}
 
 export interface D1HealthStatus {
   connected: boolean;
@@ -8,6 +22,17 @@ export interface D1HealthStatus {
     hadiths: number;
     narrators: number;
     nineBooks: number;
+  };
+}
+
+function buildAuthHeaders(
+  creds: D1Credentials,
+  extra?: Record<string, string>
+): Record<string, string> {
+  return {
+    ...(extra || {}),
+    'x-admin-username': encodeURIComponent((creds.username || '').trim()),
+    'x-admin-password': encodeURIComponent(creds.password || ''),
   };
 }
 
@@ -41,12 +66,29 @@ export async function checkD1Health(): Promise<D1HealthStatus> {
   }
 }
 
-export async function verifyD1AdminPassword(password: string): Promise<boolean> {
+export async function verifyD1Credentials(
+  creds: D1Credentials
+): Promise<{ ok: true; user: AuthenticatedUser } | { ok: false; error: string }> {
   const res = await fetch('/api/auth', {
     method: 'POST',
-    headers: { 'x-admin-password': password },
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: (creds.username || '').trim(),
+      password: creds.password,
+    }),
   });
-  return res.ok;
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    user?: AuthenticatedUser;
+    error?: string;
+  };
+  if (res.ok && data.ok && data.user) {
+    return { ok: true, user: data.user };
+  }
+  return {
+    ok: false,
+    error: data.error || 'اسم المستخدم أو كلمة المرور غير صحيحة.',
+  };
 }
 
 export async function fetchD1Hadiths(): Promise<MuhallaHadith[]> {
@@ -58,14 +100,11 @@ export async function fetchD1Hadiths(): Promise<MuhallaHadith[]> {
 
 export async function saveD1Hadith(
   hadith: MuhallaHadith,
-  password: string
+  creds: D1Credentials
 ): Promise<void> {
   const res = await fetch('/api/hadiths', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-password': password,
-    },
+    headers: buildAuthHeaders(creds, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ hadith }),
   });
   if (!res.ok) {
@@ -76,14 +115,11 @@ export async function saveD1Hadith(
 
 export async function saveD1HadithsBatch(
   hadiths: MuhallaHadith[],
-  password: string
+  creds: D1Credentials
 ): Promise<void> {
   const res = await fetch('/api/hadiths', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-password': password,
-    },
+    headers: buildAuthHeaders(creds, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ hadiths }),
   });
   if (!res.ok) {
@@ -92,10 +128,13 @@ export async function saveD1HadithsBatch(
   }
 }
 
-export async function deleteD1Hadith(id: string, password: string): Promise<void> {
+export async function deleteD1Hadith(
+  id: string,
+  creds: D1Credentials
+): Promise<void> {
   const res = await fetch(`/api/hadiths?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { 'x-admin-password': password },
+    headers: buildAuthHeaders(creds),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -112,14 +151,11 @@ export async function fetchD1Narrators(): Promise<Narrator[]> {
 
 export async function saveD1Narrator(
   narrator: Narrator,
-  password: string
+  creds: D1Credentials
 ): Promise<void> {
   const res = await fetch('/api/narrators', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-password': password,
-    },
+    headers: buildAuthHeaders(creds, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ narrator }),
   });
   if (!res.ok) {
@@ -130,14 +166,11 @@ export async function saveD1Narrator(
 
 export async function saveD1NarratorsBatch(
   narrators: Narrator[],
-  password: string
+  creds: D1Credentials
 ): Promise<void> {
   const res = await fetch('/api/narrators', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-password': password,
-    },
+    headers: buildAuthHeaders(creds, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ narrators }),
   });
   if (!res.ok) {
@@ -146,10 +179,13 @@ export async function saveD1NarratorsBatch(
   }
 }
 
-export async function deleteD1Narrator(id: string, password: string): Promise<void> {
+export async function deleteD1Narrator(
+  id: string,
+  creds: D1Credentials
+): Promise<void> {
   const res = await fetch(`/api/narrators?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { 'x-admin-password': password },
+    headers: buildAuthHeaders(creds),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -182,19 +218,72 @@ export async function fetchD1NineBookCounts(): Promise<Record<string, number>> {
 export async function uploadD1NineBookBatch(
   bookKey: NineBookKey,
   items: NineBookHadith[],
-  password: string,
+  creds: D1Credentials,
   clearBook = false
 ): Promise<void> {
   const res = await fetch('/api/nine-books', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-password': password,
-    },
+    headers: buildAuthHeaders(creds, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ bookKey, items, clearBook }),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || 'تعذر حفظ دفعة الكتاب في D1');
+  }
+}
+
+export async function fetchD1Users(
+  creds: D1Credentials
+): Promise<ResearcherAccount[]> {
+  const res = await fetch('/api/users', {
+    cache: 'no-store',
+    headers: buildAuthHeaders(creds),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || 'تعذر جلب حسابات فريق البحث');
+  }
+  const data = (await res.json()) as { users?: ResearcherAccount[] };
+  return data.users || [];
+}
+
+export async function saveD1User(
+  payload: {
+    id?: string;
+    username: string;
+    fullName: string;
+    password?: string;
+    role: ResearcherRole;
+    permissions: ResearcherPermission[];
+    isActive: boolean;
+  },
+  creds: D1Credentials
+): Promise<ResearcherAccount> {
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: buildAuthHeaders(creds, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    user?: ResearcherAccount;
+    error?: string;
+  };
+  if (!res.ok || !data.user) {
+    throw new Error(data.error || 'تعذر حفظ بيانات الحساب');
+  }
+  return data.user;
+}
+
+export async function deleteD1User(
+  id: string,
+  creds: D1Credentials
+): Promise<void> {
+  const res = await fetch(`/api/users?id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: buildAuthHeaders(creds),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || 'تعذر حذف الحساب');
   }
 }
