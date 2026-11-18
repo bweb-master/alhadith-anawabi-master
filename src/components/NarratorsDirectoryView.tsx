@@ -6,6 +6,7 @@ import { normalizeArabic } from '../utils/arabic';
 interface NarratorsDirectoryViewProps {
   narrators: Narrator[];
   selectedNarratorId: string;
+  canEdit: boolean;
   onSelectNarrator: (id: string) => void;
   onEditNarrator: (id: string) => void;
   onNewNarrator: () => void;
@@ -22,6 +23,7 @@ const ORIGIN_LABELS: Record<NarratorOrigin | 'all', string> = {
 export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
   narrators,
   selectedNarratorId,
+  canEdit,
   onSelectNarrator,
   onEditNarrator,
   onNewNarrator,
@@ -62,13 +64,15 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
         <div className="p-4 border-b border-[#E6E0D4] space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-[#1C1917]">معجم الرواة والأندلسيين</h2>
-            <button
-              onClick={onNewNarrator}
-              className="inline-flex items-center gap-1 text-xs font-medium text-[#14532D] hover:underline cursor-pointer whitespace-nowrap"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>إضافة راوٍ</span>
-            </button>
+            {canEdit && (
+              <button
+                onClick={onNewNarrator}
+                className="inline-flex items-center gap-1 text-xs font-medium text-[#14532D] hover:underline cursor-pointer whitespace-nowrap"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>إضافة راوٍ</span>
+              </button>
+            )}
           </div>
 
           <div className="relative">
@@ -191,13 +195,15 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
                 </div>
               </div>
 
-              <button
-                onClick={() => onEditNarrator(activeNarrator.id)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                <span>تعديل الترجمة</span>
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => onEditNarrator(activeNarrator.id)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>تعديل الترجمة</span>
+                </button>
+              )}
             </div>
 
             {/* Ibn Hazm's Verdict */}

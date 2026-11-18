@@ -1,10 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { LogIn, Lock, Unlock, X } from 'lucide-react';
 import {
+  ALL_RESEARCHER_PERMISSIONS,
+  AuthenticatedUser,
+  DEFAULT_ASSISTANT_PERMISSIONS,
   MuhallaHadith,
   Narrator,
   NineBookHadith,
   NineBookKey,
+  ResearcherAccount,
+  ResearcherPermission,
+  ResearcherRole,
 } from './types/hadith';
 import {
   NINE_BOOKS_META,
@@ -14,17 +20,21 @@ import {
 } from './data/seedData';
 import {
   checkD1Health,
+  D1Credentials,
   deleteD1Hadith,
   deleteD1Narrator,
+  deleteD1User,
   fetchD1Hadiths,
   fetchD1Narrators,
   fetchD1NineBookCounts,
+  fetchD1Users,
   saveD1Hadith,
   saveD1HadithsBatch,
   saveD1Narrator,
   saveD1NarratorsBatch,
+  saveD1User,
   uploadD1NineBookBatch,
-  verifyD1AdminPassword,
+  verifyD1Credentials,
 } from './utils/d1Client';
 import { HomeView } from './components/HomeView';
 import { AboutPlatformView } from './components/AboutPlatformView';
@@ -39,8 +49,11 @@ type MainSection = 'home' | 'muhalla' | 'takhrij' | 'tree' | 'narrators' | 'abou
 const STORAGE_KEYS = {
   hadiths: 'diwan_muhalla_hadiths_v1',
   narrators: 'diwan_muhalla_narrators_v1',
-  adminPwd: 'diwan_admin_pwd_v1',
+  authCreds: 'diwan_auth_creds_v2',
+  authUser: 'diwan_auth_user_v2',
   bookCounts: 'diwan_d1_book_counts_v1',
+  localUsers: 'diwan_local_researchers_v1',
+  localUserPwds: 'diwan_local_researcher_pwds_v1',
 };
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -67,6 +80,46 @@ function loadBookCountsFromStorage(): Record<string, number> {
   }
 }
 
+function loadSessionJson<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadLocalUsers(): ResearcherAccount[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.localUsers);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as ResearcherAccount[]).map((u) => ({
+      ...u,
+      permissions:
+        u.role === 'admin'
+          ? [...ALL_RESEARCHER_PERMISSIONS]
+          : Array.isArray(u.permissions)
+            ? u.permissions
+            : [...DEFAULT_ASSISTANT_PERMISSIONS],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function loadLocalPwds(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.localUserPwds);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function App() {
   const [activeSection, setActiveSection] = useState<MainSection>('home');
   const [hadiths, setHadiths] = useState<MuhallaHadith[]>(() =>
@@ -86,7 +139,9 @@ export default function App() {
   );
   const [takhrijQuery, setTakhrijQuery] = useState<string>('');
 
-  const [editorTab, setEditorTab] = useState<'hadith' | 'narrator' | 'export'>('hadith');
+  const [editorTab, setEditorTab] = useState<'hadith' | 'narrator' | 'users' | 'export'>(
+    'hadith'
+  );
   const [editingHadithId, setEditingHadithId] = useState<string | null>(null);
   const [editingNarratorId, setEditingNarratorId] = useState<string | null>(null);
 
@@ -104,23 +159,38 @@ export default function App() {
     const cached = loadBookCountsFromStorage();
     return Object.values(cached).reduce((sum, n) => sum + Number(n || 0), 0);
   });
-  const [adminPassword, setAdminPassword] = useState<string>(() => {
-    try {
-      return sessionStorage.getItem(STORAGE_KEYS.adminPwd) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+
+  // Multi-User Authentication State
+  const [authCreds, setAuthCreds] = useState<D1Credentials | null>(() =>
+    loadSessionJson<D1Credentials>(STORAGE_KEYS.authCreds)
+  );
+  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(() =>
+    loadSessionJson<AuthenticatedUser>(STORAGE_KEYS.authUser)
+  );
+  const [researchers, setResearchers] = useState<ResearcherAccount[]>(() =>
+    loadLocalUsers()
+  );
+
+  const isLoggedIn = Boolean(currentUser);
+  const isAdmin = currentUser?.role === 'admin';
+  const hasPerm = useCallback(
+    (perm: ResearcherPermission): boolean => {
+      if (!currentUser) return false;
+      if (currentUser.role === 'admin') return true;
+      return Array.isArray(currentUser.permissions) && currentUser.permissions.includes(perm);
+    },
+    [currentUser]
+  );
 
   // Header "دخول" dropdown state
   const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
+  const [loginUsernameInput, setLoginUsernameInput] = useState('');
   const [loginPasswordInput, setLoginPasswordInput] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isCheckingLogin, setIsCheckingLogin] = useState(false);
   const loginMenuRef = useRef<HTMLDivElement>(null);
   const hasFetchedBookCountsRef = useRef(false);
-  const initialAdminPwdRef = useRef(adminPassword);
+  const initialAuthCredsRef = useRef(authCreds);
 
   useEffect(() => {
     if (!isLoginDropdownOpen) return;
@@ -193,17 +263,35 @@ export default function App() {
           );
         }
 
-        const storedPwd = initialAdminPwdRef.current;
-        if (storedPwd) {
-          const valid = await verifyD1AdminPassword(storedPwd);
+        const storedCreds = initialAuthCredsRef.current;
+        if (storedCreds) {
+          const authRes = await verifyD1Credentials(storedCreds);
           if (!cancelled) {
-            if (valid) {
-              setIsAdminUnlocked(true);
-            } else {
-              setAdminPassword('');
-              setIsAdminUnlocked(false);
+            if (authRes.ok) {
+              setCurrentUser(authRes.user);
               try {
-                sessionStorage.removeItem(STORAGE_KEYS.adminPwd);
+                sessionStorage.setItem(
+                  STORAGE_KEYS.authUser,
+                  JSON.stringify(authRes.user)
+                );
+              } catch {
+                // ignore
+              }
+              if (authRes.user.role === 'admin') {
+                fetchD1Users(storedCreds)
+                  .then((users) => {
+                    if (!cancelled) setResearchers(users);
+                  })
+                  .catch(() => {
+                    // ignore
+                  });
+              }
+            } else {
+              setAuthCreds(null);
+              setCurrentUser(null);
+              try {
+                sessionStorage.removeItem(STORAGE_KEYS.authCreds);
+                sessionStorage.removeItem(STORAGE_KEYS.authUser);
               } catch {
                 // ignore
               }
@@ -245,33 +333,102 @@ export default function App() {
     }
   }, [narrators]);
 
-  const handleUnlockAdmin = async (password: string): Promise<boolean> => {
-    if (!isD1Connected) {
-      setIsAdminUnlocked(true);
-      return true;
+  const handleUnlockUser = async (
+    usernameInput: string,
+    password: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const username = usernameInput.trim().toLowerCase();
+    if (!username) {
+      return { ok: false, error: 'يرجى إدخال اسم المستخدم.' };
     }
-    const ok = await verifyD1AdminPassword(password);
-    if (ok) {
-      setAdminPassword(password);
-      setIsAdminUnlocked(true);
+    const creds: D1Credentials = { username, password };
+
+    if (!isD1Connected) {
+      // Local preview mode: supports Master Super Admin 'bweb' and locally created researcher accounts
+      if (username === 'bweb') {
+        const superAdmin: AuthenticatedUser = {
+          id: 'master_bweb',
+          username: 'bweb',
+          fullName: 'المشرف العام',
+          role: 'admin',
+          permissions: [...ALL_RESEARCHER_PERMISSIONS],
+        };
+        setAuthCreds(creds);
+        setCurrentUser(superAdmin);
+        try {
+          sessionStorage.setItem(STORAGE_KEYS.authCreds, JSON.stringify(creds));
+          sessionStorage.setItem(STORAGE_KEYS.authUser, JSON.stringify(superAdmin));
+        } catch {
+          // ignore
+        }
+        return { ok: true };
+      }
+
+      const localList = loadLocalUsers();
+      const localPwds = loadLocalPwds();
+      const found = localList.find((u) => u.username.toLowerCase() === username);
+      if (!found) {
+        return { ok: false, error: 'اسم المستخدم أو كلمة المرور غير صحيحة.' };
+      }
+      if (!found.isActive) {
+        return { ok: false, error: 'تم تعطيل هذا الحساب مؤقتاً من قِبل المشرف العام.' };
+      }
+      if (localPwds[found.id] !== password) {
+        return { ok: false, error: 'اسم المستخدم أو كلمة المرور غير صحيحة.' };
+      }
+      const userObj: AuthenticatedUser = {
+        id: found.id,
+        username: found.username,
+        fullName: found.fullName,
+        role: found.role,
+        permissions:
+          found.role === 'admin'
+            ? [...ALL_RESEARCHER_PERMISSIONS]
+            : found.permissions || [...DEFAULT_ASSISTANT_PERMISSIONS],
+      };
+      setAuthCreds(creds);
+      setCurrentUser(userObj);
       try {
-        sessionStorage.setItem(STORAGE_KEYS.adminPwd, password);
+        sessionStorage.setItem(STORAGE_KEYS.authCreds, JSON.stringify(creds));
+        sessionStorage.setItem(STORAGE_KEYS.authUser, JSON.stringify(userObj));
       } catch {
         // ignore
       }
-      return true;
+      return { ok: true };
     }
-    return false;
+
+    const res = await verifyD1Credentials(creds);
+    if (res.ok) {
+      setAuthCreds(creds);
+      setCurrentUser(res.user);
+      try {
+        sessionStorage.setItem(STORAGE_KEYS.authCreds, JSON.stringify(creds));
+        sessionStorage.setItem(STORAGE_KEYS.authUser, JSON.stringify(res.user));
+      } catch {
+        // ignore
+      }
+      if (res.user.role === 'admin') {
+        fetchD1Users(creds)
+          .then((users) => setResearchers(users))
+          .catch(() => {
+            // ignore
+          });
+      }
+      return { ok: true };
+    }
+    return { ok: false, error: res.error };
   };
 
   const handleLockAdmin = () => {
-    setIsAdminUnlocked(false);
-    setAdminPassword('');
+    setAuthCreds(null);
+    setCurrentUser(null);
     setIsLoginDropdownOpen(false);
     setLoginError(null);
+    setLoginUsernameInput('');
     setLoginPasswordInput('');
     try {
-      sessionStorage.removeItem(STORAGE_KEYS.adminPwd);
+      sessionStorage.removeItem(STORAGE_KEYS.authCreds);
+      sessionStorage.removeItem(STORAGE_KEYS.authUser);
     } catch {
       // ignore
     }
@@ -283,30 +440,156 @@ export default function App() {
   const handleHeaderLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
+    if (!loginUsernameInput.trim()) {
+      setLoginError('يرجى إدخال اسم المستخدم.');
+      return;
+    }
     if (isD1Connected && !loginPasswordInput.trim()) {
-      setLoginError('يرجى إدخال كلمة مرور الباحث.');
+      setLoginError('يرجى إدخال كلمة المرور.');
       return;
     }
     setIsCheckingLogin(true);
     try {
-      const ok = await handleUnlockAdmin(loginPasswordInput.trim());
-      if (ok) {
+      const res = await handleUnlockUser(
+        loginUsernameInput.trim(),
+        loginPasswordInput.trim()
+      );
+      if (res.ok) {
+        setLoginUsernameInput('');
         setLoginPasswordInput('');
         setIsLoginDropdownOpen(false);
         setEditorTab('hadith');
         setEditingHadithId('__NEW__');
         setActiveSection('editor');
       } else {
-        setLoginError('كلمة مرور الباحث غير صحيحة.');
+        setLoginError(res.error || 'اسم المستخدم أو كلمة المرور غير صحيحة.');
       }
     } finally {
       setIsCheckingLogin(false);
     }
   };
 
+  const handleRefreshUsers = useCallback(async () => {
+    if (!isD1Connected) {
+      setResearchers(loadLocalUsers());
+      return;
+    }
+    if (!authCreds || !isAdmin) return;
+    const users = await fetchD1Users(authCreds);
+    setResearchers(users);
+  }, [isD1Connected, authCreds, isAdmin]);
+
+  const handleSaveUser = async (payload: {
+    id?: string;
+    username: string;
+    fullName: string;
+    password?: string;
+    role: ResearcherRole;
+    permissions: ResearcherPermission[];
+    isActive: boolean;
+  }): Promise<void> => {
+    if (!isAdmin) {
+      throw new Error('هذه الصلاحية مخصصة للمشرف فقط.');
+    }
+
+    if (!isD1Connected) {
+      const list = loadLocalUsers();
+      const pwds = loadLocalPwds();
+      const username = payload.username.trim().toLowerCase();
+      if (!/^[a-z0-9._-]{3,32}$/.test(username) || username === 'bweb') {
+        throw new Error(
+          'اسم المستخدم يجب أن يكون بالإنجليزية (3-32 حرفاً) ولا يمكن استخدام "bweb".'
+        );
+      }
+      const conflict = list.find(
+        (u) => u.username.toLowerCase() === username && u.id !== payload.id
+      );
+      if (conflict) {
+        throw new Error('اسم المستخدم مستعمل مسبقاً لباحث آخر.');
+      }
+      if (!payload.id && (!payload.password || payload.password.length < 4)) {
+        throw new Error('يرجى إدخال كلمة مرور من 4 أحرف على الأقل.');
+      }
+
+      const effectivePerms =
+        payload.role === 'admin'
+          ? [...ALL_RESEARCHER_PERMISSIONS]
+          : payload.permissions;
+
+      let nextList: ResearcherAccount[];
+      if (payload.id) {
+        nextList = list.map((u) =>
+          u.id === payload.id
+            ? {
+                ...u,
+                username,
+                fullName: payload.fullName,
+                role: payload.role,
+                permissions: effectivePerms,
+                isActive: payload.isActive,
+              }
+            : u
+        );
+        if (payload.password) {
+          pwds[payload.id] = payload.password;
+        }
+      } else {
+        const newId = `res_${Date.now()}`;
+        const created: ResearcherAccount = {
+          id: newId,
+          username,
+          fullName: payload.fullName,
+          role: payload.role,
+          permissions: effectivePerms,
+          isActive: payload.isActive,
+          createdAt: new Date().toISOString().slice(0, 10),
+        };
+        nextList = [created, ...list];
+        pwds[newId] = payload.password || '';
+      }
+
+      setResearchers(nextList);
+      localStorage.setItem(STORAGE_KEYS.localUsers, JSON.stringify(nextList));
+      localStorage.setItem(STORAGE_KEYS.localUserPwds, JSON.stringify(pwds));
+      return;
+    }
+
+    if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+    const saved = await saveD1User(payload, authCreds);
+    setResearchers((prev) => {
+      const exists = prev.some((u) => u.id === saved.id);
+      return exists
+        ? prev.map((u) => (u.id === saved.id ? saved : u))
+        : [saved, ...prev];
+    });
+  };
+
+  const handleDeleteUser = async (id: string): Promise<void> => {
+    if (!isAdmin) {
+      throw new Error('هذه الصلاحية مخصصة للمشرف فقط.');
+    }
+
+    if (!isD1Connected) {
+      const next = loadLocalUsers().filter((u) => u.id !== id);
+      const pwds = loadLocalPwds();
+      delete pwds[id];
+      setResearchers(next);
+      localStorage.setItem(STORAGE_KEYS.localUsers, JSON.stringify(next));
+      localStorage.setItem(STORAGE_KEYS.localUserPwds, JSON.stringify(pwds));
+      return;
+    }
+
+    if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+    await deleteD1User(id, authCreds);
+    setResearchers((prev) => prev.filter((u) => u.id !== id));
+  };
+
   const handleSeedInitialD1 = async (): Promise<void> => {
-    await saveD1HadithsBatch(SEED_MUHALLA_HADITHS, adminPassword);
-    await saveD1NarratorsBatch(SEED_NARRATORS, adminPassword);
+    if (!authCreds || !isAdmin) {
+      throw new Error('هذه الصلاحية مخصصة للمشرف فقط.');
+    }
+    await saveD1HadithsBatch(SEED_MUHALLA_HADITHS, authCreds);
+    await saveD1NarratorsBatch(SEED_NARRATORS, authCreds);
 
     if (d1NineBookTotal === 0) {
       const byBook = new Map<NineBookKey, NineBookHadith[]>();
@@ -316,7 +599,7 @@ export default function App() {
         byBook.set(item.bookKey, list);
       });
       for (const [bookKey, items] of byBook.entries()) {
-        await uploadD1NineBookBatch(bookKey, items, adminPassword, false);
+        await uploadD1NineBookBatch(bookKey, items, authCreds, false);
       }
     }
 
@@ -337,7 +620,8 @@ export default function App() {
 
   const handleSaveHadith = async (updated: MuhallaHadith): Promise<void> => {
     if (isD1Connected) {
-      await saveD1Hadith(updated, adminPassword);
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      await saveD1Hadith(updated, authCreds);
     }
     setHadiths((prev) => {
       const exists = prev.some((h) => h.id === updated.id);
@@ -352,8 +636,10 @@ export default function App() {
   };
 
   const handleDeleteHadith = async (id: string): Promise<void> => {
+    if (!hasPerm('delete_records')) throw new Error('لا تملك صلاحية حذف السجلات.');
     if (isD1Connected) {
-      await deleteD1Hadith(id, adminPassword);
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      await deleteD1Hadith(id, authCreds);
     }
     setHadiths((prev) => {
       const next = prev.filter((h) => h.id !== id);
@@ -366,7 +652,8 @@ export default function App() {
 
   const handleSaveNarrator = async (updated: Narrator): Promise<void> => {
     if (isD1Connected) {
-      await saveD1Narrator(updated, adminPassword);
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      await saveD1Narrator(updated, authCreds);
     }
     setNarrators((prev) => {
       const exists = prev.some((n) => n.id === updated.id);
@@ -380,8 +667,10 @@ export default function App() {
   };
 
   const handleDeleteNarrator = async (id: string): Promise<void> => {
+    if (!hasPerm('delete_records')) throw new Error('لا تملك صلاحية حذف السجلات.');
     if (isD1Connected) {
-      await deleteD1Narrator(id, adminPassword);
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      await deleteD1Narrator(id, authCreds);
     }
     setNarrators((prev) => {
       const next = prev.filter((n) => n.id !== id);
@@ -408,6 +697,9 @@ export default function App() {
     hadithNumber: number,
     chapterName: string
   ): Promise<void> => {
+    if (!hasPerm('link_takhrij')) {
+      throw new Error('لا تملك صلاحية ربط التخريج بالمسألة.');
+    }
     const target = hadiths.find((h) => h.id === muhallaId);
     if (!target) return;
     const already = target.takhrijLinks.some(
@@ -430,7 +722,8 @@ export default function App() {
     };
 
     if (isD1Connected) {
-      await saveD1Hadith(updatedHadith, adminPassword);
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      await saveD1Hadith(updatedHadith, authCreds);
     }
 
     setHadiths((prev) =>
@@ -457,6 +750,12 @@ export default function App() {
   ];
 
   const andalusianCount = narrators.filter((n) => n.origin === 'andalusian').length;
+  const userBadgeLabel =
+    currentUser?.username === 'bweb'
+      ? 'مشرف عام'
+      : isAdmin
+        ? 'مشرف'
+        : 'باحث مساعد';
 
   return (
     <div className="min-h-screen flex flex-col text-[#1C1917]">
@@ -496,9 +795,9 @@ export default function App() {
             })}
           </nav>
 
-          {/* Zone 3: Researcher Login Dropdown / Lock Editing Toggle */}
+          {/* Zone 3: Multi-User Login Dropdown / Lock Editing Toggle */}
           <div className="relative flex items-center gap-2 shrink-0" ref={loginMenuRef}>
-            {isAdminUnlocked ? (
+            {isLoggedIn ? (
               activeSection === 'editor' ? (
                 <button
                   type="button"
@@ -506,7 +805,7 @@ export default function App() {
                   className="btn-hover-motion inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer bg-[#854D0E] hover:bg-[#713F12] text-white shadow-xs"
                 >
                   <Lock className="w-4 h-4" />
-                  <span>غلق التعديل</span>
+                  <span>خروج ({userBadgeLabel})</span>
                 </button>
               ) : (
                 <>
@@ -526,10 +825,10 @@ export default function App() {
                     type="button"
                     onClick={handleLockAdmin}
                     className="btn-hover-motion inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold rounded-lg whitespace-nowrap shrink-0 cursor-pointer bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#854D0E] border border-[#D6CEBE]"
-                    title="إغلاق وضع التعديل"
+                    title="تسجيل الخروج"
                   >
                     <Lock className="w-4 h-4" />
-                    <span>غلق التعديل</span>
+                    <span>خروج</span>
                   </button>
                 </>
               )
@@ -547,12 +846,12 @@ export default function App() {
               </button>
             )}
 
-            {isLoginDropdownOpen && !isAdminUnlocked && (
+            {isLoginDropdownOpen && !isLoggedIn && (
               <div className="absolute left-0 top-full mt-2 w-80 bg-white border border-[#D6CEBE] rounded-xl shadow-lg p-5 z-50 space-y-4">
                 <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[#E6E0D4]">
                   <div className="flex items-center gap-2 text-sm font-bold text-[#1C1917]">
                     <Lock className="w-4 h-4 text-[#854D0E]" />
-                    <span>دخول الباحث للتحرير</span>
+                    <span>دخول فريق البحث</span>
                   </div>
                   <button
                     type="button"
@@ -567,23 +866,31 @@ export default function App() {
                 <form onSubmit={handleHeaderLoginSubmit} className="space-y-3">
                   <label className="block space-y-1.5">
                     <span className="text-xs font-medium text-[#44403C]">
-                      كلمة مرور الباحث
+                      اسم المستخدم
+                    </span>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      autoFocus
+                      value={loginUsernameInput}
+                      onChange={(e) => setLoginUsernameInput(e.target.value)}
+                      placeholder="أدخل اسم المستخدم..."
+                      className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] text-left font-mono"
+                    />
+                  </label>
+
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-[#44403C]">
+                      كلمة المرور
                     </span>
                     <input
                       type="password"
-                      autoFocus
                       value={loginPasswordInput}
                       onChange={(e) => setLoginPasswordInput(e.target.value)}
                       placeholder="أدخل كلمة المرور..."
                       className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
                     />
                   </label>
-
-                  {!isD1Connected && (
-                    <p className="text-[11px] text-[#6B655E] leading-relaxed">
-                      في وضع التجربة المحلي يمكنك الضغط على «دخول» مباشرة لتجربة صفحة التعديلات.
-                    </p>
-                  )}
 
                   {loginError && (
                     <p className="text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-md">
@@ -633,7 +940,7 @@ export default function App() {
             andalusiansCount={andalusianCount}
             nineBooksCount={NINE_BOOKS_META.length}
             onNavigate={(target) => {
-              if (target === 'editor' && !isAdminUnlocked) {
+              if (target === 'editor' && !isLoggedIn) {
                 setLoginError(null);
                 setIsLoginDropdownOpen(true);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -650,6 +957,7 @@ export default function App() {
             narrators={narrators}
             nineBooksCorpus={nineBooksCorpus}
             selectedHadithId={selectedHadithId}
+            isAdmin={hasPerm('edit_muhalla_direct')}
             onSelectHadith={setSelectedHadithId}
             onOpenTree={(id) => {
               setSelectedHadithId(id);
@@ -677,21 +985,12 @@ export default function App() {
             nineBooksCorpus={nineBooksCorpus}
             initialQuery={takhrijQuery}
             isD1Connected={isD1Connected}
-            isAdminUnlocked={isAdminUnlocked}
-            adminPassword={adminPassword}
+            canUploadBooks={hasPerm('upload_nine_books')}
+            canLinkMuhalla={hasPerm('link_takhrij')}
+            authCreds={authCreds}
             d1BookCounts={d1BookCounts}
             onImportNineBookHadiths={handleImportNineBookHadiths}
             onNineBooksD1Updated={refreshD1NineBookCounts}
-            onOpenEditorAuth={() => {
-              if (!isAdminUnlocked) {
-                setLoginError(null);
-                setIsLoginDropdownOpen(true);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              } else {
-                setEditorTab('hadith');
-                setActiveSection('editor');
-              }
-            }}
             onLinkTakhrijToMuhalla={handleLinkTakhrijToMuhalla}
           />
         )}
@@ -713,6 +1012,7 @@ export default function App() {
           <NarratorsDirectoryView
             narrators={narrators}
             selectedNarratorId={selectedNarratorId}
+            canEdit={hasPerm('edit_narrators')}
             onSelectNarrator={setSelectedNarratorId}
             onEditNarrator={(nid) => {
               setEditingNarratorId(nid);
@@ -741,14 +1041,18 @@ export default function App() {
             isD1Connected={isD1Connected}
             d1Reason={d1Reason}
             d1ErrorDetail={d1ErrorDetail}
-            isAdminUnlocked={isAdminUnlocked}
+            currentUser={currentUser}
             d1HadithCount={d1HadithCount}
-            onUnlockAdmin={handleUnlockAdmin}
+            researchers={researchers}
+            onUnlockUser={handleUnlockUser}
             onSeedInitialD1={handleSeedInitialD1}
             onSaveHadith={handleSaveHadith}
             onDeleteHadith={handleDeleteHadith}
             onSaveNarrator={handleSaveNarrator}
             onDeleteNarrator={handleDeleteNarrator}
+            onRefreshUsers={handleRefreshUsers}
+            onSaveUser={handleSaveUser}
+            onDeleteUser={handleDeleteUser}
             onResetDefaults={handleResetDefaults}
           />
         )}
@@ -767,28 +1071,30 @@ export default function App() {
             >
               حول المنصة
             </button>
-            <button
-              onClick={() => {
-                setEditorTab('export');
-                setActiveSection('editor');
-              }}
-              className="hover:text-[#14532D] cursor-pointer"
-            >
-              تصدير JSON لـ GitHub
-            </button>
-            <a
-              href="https://github.com/bweb-master/alhadith-anawabi-master"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-[#14532D]"
-            >
-              مستودع المشروع
-            </a>
+            {hasPerm('export_github') && (
+              <>
+                <button
+                  onClick={() => {
+                    setEditorTab('export');
+                    setActiveSection('editor');
+                  }}
+                  className="hover:text-[#14532D] cursor-pointer"
+                >
+                  تصدير JSON لـ GitHub
+                </button>
+                <a
+                  href="https://github.com/bweb-master/alhadith-anawabi-master"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-[#14532D]"
+                >
+                  مستودع المشروع
+                </a>
+              </>
+            )}
           </div>
         </div>
       </footer>
     </div>
   );
 }
-
-

@@ -22,6 +22,7 @@ interface MuhallaArchiveViewProps {
   narrators: Narrator[];
   nineBooksCorpus: NineBookHadith[];
   selectedHadithId: string;
+  isAdmin: boolean;
   onSelectHadith: (id: string) => void;
   onOpenTree: (hadithId: string) => void;
   onOpenNarrator: (narratorId: string) => void;
@@ -36,6 +37,7 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
   narrators,
   nineBooksCorpus,
   selectedHadithId,
+  isAdmin,
   onSelectHadith,
   onOpenTree,
   onOpenNarrator,
@@ -101,9 +103,11 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
     return (
       <div className="bg-white border border-[#E6E0D4] rounded-xl p-12 text-center">
         <p className="text-lg font-medium text-[#1C1917]">لا توجد أحاديث مضافة بعد في المحلى</p>
-        <p className="text-sm text-[#6B655E] mt-2">
-          انتقل إلى تبويب «إدارة المحتوى والتعديل» لإضافة أول حديث من المحلى.
-        </p>
+        {isAdmin && (
+          <p className="text-sm text-[#6B655E] mt-2">
+            انتقل إلى صفحة «التعديلات» لإضافة أول حديث من المحلى.
+          </p>
+        )}
       </div>
     );
   }
@@ -217,13 +221,15 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
               <GitBranch className="w-4 h-4" />
               <span>شجرة الإسناد</span>
             </button>
-            <button
-              onClick={() => onEditHadith(activeHadith.id)}
-              className="btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-[#1C1917] bg-[#F3EFE6] hover:bg-[#E6E0D4] rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Pencil className="w-4 h-4" />
-              <span>تعديل</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => onEditHadith(activeHadith.id)}
+                className="btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-[#1C1917] bg-[#F3EFE6] hover:bg-[#E6E0D4] rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Pencil className="w-4 h-4" />
+                <span>تعديل</span>
+              </button>
+            )}
           </div>
         </div>
 
