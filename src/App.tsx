@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { LogIn, Lock, Unlock, X } from 'lucide-react';
+import { LogIn, Lock, Settings, Unlock, X } from 'lucide-react';
 import {
   ALL_RESEARCHER_PERMISSIONS,
   AuthenticatedUser,
@@ -42,9 +42,18 @@ import { MuhallaArchiveView } from './components/MuhallaArchiveView';
 import { TakhrijEngineView } from './components/TakhrijEngineView';
 import { IsnadTreeView } from './components/IsnadTreeView';
 import { NarratorsDirectoryView } from './components/NarratorsDirectoryView';
+import { FiqhHadithView } from './components/FiqhHadithView';
 import { ContentEditorView } from './components/ContentEditorView';
 
-type MainSection = 'home' | 'muhalla' | 'takhrij' | 'tree' | 'narrators' | 'about' | 'editor';
+type MainSection =
+  | 'home'
+  | 'muhalla'
+  | 'takhrij'
+  | 'tree'
+  | 'narrators'
+  | 'fiqh'
+  | 'about'
+  | 'editor';
 
 const STORAGE_KEYS = {
   hadiths: 'diwan_muhalla_hadiths_v1',
@@ -122,12 +131,29 @@ function loadLocalPwds(): Record<string, string> {
 
 export default function App() {
   const [activeSection, setActiveSection] = useState<MainSection>('home');
-  const [hadiths, setHadiths] = useState<MuhallaHadith[]>(() =>
-    loadFromStorage(STORAGE_KEYS.hadiths, SEED_MUHALLA_HADITHS)
-  );
-  const [narrators, setNarrators] = useState<Narrator[]>(() =>
-    loadFromStorage(STORAGE_KEYS.narrators, SEED_NARRATORS)
-  );
+  const [hadiths, setHadiths] = useState<MuhallaHadith[]>(() => {
+    const stored = loadFromStorage(STORAGE_KEYS.hadiths, SEED_MUHALLA_HADITHS);
+    const seedMap = new Map(SEED_MUHALLA_HADITHS.map((s) => [s.id, s]));
+    return stored.map((h) => {
+      const seed = seedMap.get(h.id);
+      if (
+        seed &&
+        (!h.fourMadhahibFiqh ||
+          h.fourMadhahibFiqh.length === 0 ||
+          !h.fourMadhahibFiqh[0]?.author) &&
+        seed.fourMadhahibFiqh
+      ) {
+        return { ...h, fourMadhahibFiqh: seed.fourMadhahibFiqh };
+      }
+      return h;
+    });
+  });
+  const [narrators, setNarrators] = useState<Narrator[]>(() => {
+    const stored = loadFromStorage(STORAGE_KEYS.narrators, SEED_NARRATORS);
+    const existingIds = new Set(stored.map((n) => n.id));
+    const missingSeeds = SEED_NARRATORS.filter((s) => !existingIds.has(s.id));
+    return missingSeeds.length > 0 ? [...stored, ...missingSeeds] : stored;
+  });
   const [nineBooksCorpus, setNineBooksCorpus] =
     useState<NineBookHadith[]>(SEED_NINE_BOOKS);
 
@@ -139,9 +165,9 @@ export default function App() {
   );
   const [takhrijQuery, setTakhrijQuery] = useState<string>('');
 
-  const [editorTab, setEditorTab] = useState<'hadith' | 'narrator' | 'users' | 'export'>(
-    'hadith'
-  );
+  const [editorTab, setEditorTab] = useState<
+    'hadith' | 'narrator' | 'bulk' | 'users' | 'export'
+  >('hadith');
   const [editingHadithId, setEditingHadithId] = useState<string | null>(null);
   const [editingNarratorId, setEditingNarratorId] = useState<string | null>(null);
 
@@ -635,6 +661,36 @@ export default function App() {
     setEditingHadithId(updated.id);
   };
 
+  const handleSaveHadithsBatch = async (items: MuhallaHadith[]): Promise<void> => {
+    if (!isAdmin) throw new Error('الاستيراد الجماعي مخصص لحساب المشرف فقط.');
+    if (items.length === 0) return;
+
+    if (isD1Connected) {
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      const CHUNK_SIZE = 40;
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        await saveD1HadithsBatch(items.slice(i, i + CHUNK_SIZE), authCreds);
+      }
+    }
+
+    let addedCount = 0;
+    setHadiths((prev) => {
+      const map = new Map<string, MuhallaHadith>();
+      prev.forEach((h) => map.set(h.id, h));
+      items.forEach((item) => {
+        if (!map.has(item.id)) addedCount++;
+        map.set(item.id, item);
+      });
+      return Array.from(map.values()).sort(
+        (a, b) => a.volume - b.volume || a.issueNumber - b.issueNumber
+      );
+    });
+    if (addedCount > 0) {
+      setD1HadithCount((c) => c + addedCount);
+    }
+    setSelectedHadithId(items[0].id);
+  };
+
   const handleDeleteHadith = async (id: string): Promise<void> => {
     if (!hasPerm('delete_records')) throw new Error('لا تملك صلاحية حذف السجلات.');
     if (isD1Connected) {
@@ -664,6 +720,27 @@ export default function App() {
     });
     setSelectedNarratorId(updated.id);
     setEditingNarratorId(updated.id);
+  };
+
+  const handleSaveNarratorsBatch = async (items: Narrator[]): Promise<void> => {
+    if (!isAdmin) throw new Error('الاستيراد الجماعي مخصص لحساب المشرف فقط.');
+    if (items.length === 0) return;
+
+    if (isD1Connected) {
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      const CHUNK_SIZE = 40;
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        await saveD1NarratorsBatch(items.slice(i, i + CHUNK_SIZE), authCreds);
+      }
+    }
+
+    setNarrators((prev) => {
+      const map = new Map<string, Narrator>();
+      prev.forEach((n) => map.set(n.id, n));
+      items.forEach((item) => map.set(item.id, item));
+      return Array.from(map.values());
+    });
+    setSelectedNarratorId(items[0].id);
   };
 
   const handleDeleteNarrator = async (id: string): Promise<void> => {
@@ -742,11 +819,13 @@ export default function App() {
 
   const navItems: { id: MainSection; label: string }[] = [
     { id: 'home', label: 'الرئيسية' },
-    { id: 'muhalla', label: 'مرويات المحلّى' },
+    { id: 'muhalla', label: 'مرويات الأندلسيين' },
     { id: 'takhrij', label: 'تخريج الأحاديث' },
     { id: 'tree', label: 'شجرة الإسناد' },
     { id: 'narrators', label: 'دراسة الرواة' },
+    { id: 'fiqh', label: 'فقه الحديث' },
     { id: 'about', label: 'حول المنصة' },
+    ...(isLoggedIn ? [{ id: 'editor' as MainSection, label: 'الإعدادات' }] : []),
   ];
 
   const andalusianCount = narrators.filter((n) => n.origin === 'andalusian').length;
@@ -783,13 +862,14 @@ export default function App() {
                 <button
                   key={item.id}
                   onClick={() => setActiveSection(item.id)}
-                  className={`btn-hover-motion px-3.5 py-2 rounded-lg border whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border whitespace-nowrap shrink-0 cursor-pointer ${
                     isActive
                       ? 'bg-[#14532D] text-white border-[#14532D] shadow-xs'
                       : 'bg-white/90 text-[#1C1917] border-[#E6E0D4] hover:border-[#14532D] hover:bg-[#F3EFE6] hover:text-[#14532D]'
                   }`}
                 >
-                  {item.label}
+                  {item.id === 'editor' && <Settings className="w-3.5 h-3.5" />}
+                  <span>{item.label}</span>
                 </button>
               );
             })}
@@ -919,13 +999,14 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => setActiveSection(item.id)}
-                className={`btn-hover-motion px-3 py-1.5 rounded-lg border whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`btn-hover-motion inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border whitespace-nowrap shrink-0 cursor-pointer ${
                   isActive
                     ? 'bg-[#14532D] text-white border-[#14532D]'
                     : 'bg-white text-[#1C1917] border-[#E6E0D4]'
                 }`}
               >
-                {item.label}
+                {item.id === 'editor' && <Settings className="w-3.5 h-3.5" />}
+                <span>{item.label}</span>
               </button>
             );
           })}
@@ -1027,6 +1108,24 @@ export default function App() {
           />
         )}
 
+        {activeSection === 'fiqh' && (
+          <FiqhHadithView
+            hadiths={hadiths}
+            selectedHadithId={selectedHadithId}
+            canEdit={hasPerm('edit_muhalla_direct')}
+            onSelectHadith={setSelectedHadithId}
+            onOpenMuhalla={(id) => {
+              setSelectedHadithId(id);
+              setActiveSection('muhalla');
+            }}
+            onEditHadith={(id) => {
+              setEditingHadithId(id);
+              setEditorTab('hadith');
+              setActiveSection('editor');
+            }}
+          />
+        )}
+
         {activeSection === 'about' && (
           <AboutPlatformView onNavigate={(target) => setActiveSection(target)} />
         )}
@@ -1047,8 +1146,10 @@ export default function App() {
             onUnlockUser={handleUnlockUser}
             onSeedInitialD1={handleSeedInitialD1}
             onSaveHadith={handleSaveHadith}
+            onSaveHadithsBatch={handleSaveHadithsBatch}
             onDeleteHadith={handleDeleteHadith}
             onSaveNarrator={handleSaveNarrator}
+            onSaveNarratorsBatch={handleSaveNarratorsBatch}
             onDeleteNarrator={handleDeleteNarrator}
             onRefreshUsers={handleRefreshUsers}
             onSaveUser={handleSaveUser}
@@ -1062,7 +1163,7 @@ export default function App() {
       <footer className="border-t border-[#E6E0D4] bg-[#FBF9F5] py-6 mt-10">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-4 text-sm text-[#6B655E]">
           <span>
-            مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي · تحت إشراف الدكتور عبد الكريم خلفي · إعداد الطلبة الباحثين فوج 2025-2027
+            مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي - فوج 2025-2027
           </span>
           <div className="flex items-center gap-5">
             <button

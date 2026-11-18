@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS muhalla_hadiths (
   id TEXT PRIMARY KEY,
   volume INTEGER NOT NULL DEFAULT 1,
+  page TEXT DEFAULT '',
   issue_number INTEGER NOT NULL DEFAULT 1,
   kitab TEXT NOT NULL,
   issue_title TEXT NOT NULL,
@@ -12,6 +13,7 @@ CREATE TABLE IF NOT EXISTS muhalla_hadiths (
   gharib_json TEXT NOT NULL DEFAULT '[]',
   fiqh_analysis TEXT DEFAULT '',
   other_madhahib_notes TEXT DEFAULT '',
+  four_madhahib_json TEXT DEFAULT '[]',
   updated_at TEXT NOT NULL
 );
 

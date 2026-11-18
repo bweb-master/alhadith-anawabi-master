@@ -20,6 +20,7 @@ export type NavTarget =
   | 'takhrij'
   | 'tree'
   | 'narrators'
+  | 'fiqh'
   | 'editor'
   | 'about';
 
@@ -45,7 +46,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   }[] = [
     {
       id: 'muhalla',
-      title: 'مرويات كتاب المحلّى',
+      title: 'مرويات الأندلسيين',
       subtitle: `${hadithsCount} مسائل محققة`,
       description:
         'استعراض أحاديث الإمام ابن حزم في المحلى مع المتن المشكول، السند الأندلسي الكامل، وحكم ابن حزم النقدي على كل رواية.',
@@ -72,15 +73,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
       title: 'دراسة الرواة الأندلسيين',
       subtitle: `${andalusiansCount} أعلام أندلسيين`,
       description:
-        'معجم تراجم لشيوخ ابن حزم والرواة الأندلسيين مع طبقاتهم، شيوخهم وتلاميذهم، أقوال الجرح والتعديل، وموقف ابن حزم فيهم.',
+        'معجم تراجم لشيوخ ابن حزم والرواة الأندلسيين مع طبقاتهم، شيوخهم وتلاميذهم، أقوال الجرح والتعديل، ودراستهم.',
       icon: <Users className="w-6 h-6" />,
     },
     {
-      id: 'muhalla',
-      title: 'فقه الحديث وغريب الألفاظ',
-      subtitle: 'دراسة دلالية وفقهية',
+      id: 'fiqh',
+      title: 'فقه الحديث والمذاهب الأربعة',
+      subtitle: 'فقه مقارن موثّق',
       description:
-        'تحليل استنباطات ابن حزم الظاهرية ومناقشته للمذاهب الفقهية، إلى جانب ضبط وشرح الألفاظ الغريبة من معاجم غريب الحديث.',
+        'عرض استنباطات ابن حزم الظاهرية وأقوال المذاهب الأربعة (الحنفي والمالكي والشافعي والحنبلي) موثقة بالكتب والأجزاء والصفحات.',
       icon: <Scale className="w-6 h-6" />,
     },
     {
@@ -171,7 +172,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onClick={() => onNavigate('muhalla')}
                   className="btn-hover-motion inline-flex items-center gap-2 px-6 py-3 text-base font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-xl shadow-xs cursor-pointer whitespace-nowrap"
                 >
-                  <span>استعراض مرويات المحلّى</span>
+                  <span>استعراض مرويات الأندلسيين</span>
                   <ArrowLeft className="w-4 h-4" />
                 </button>
 
@@ -192,9 +193,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </div>
             </div>
 
-            {/* Subtle Octagonal Geometric Crest on Desktop */}
-            <div className="hidden lg:flex items-center justify-center shrink-0">
-              <OctagonalHalo className="w-56 h-56 text-[#14532D]/12" />
+            {/* Large Prominent Platform Logo beside Hero Title */}
+            <div className="relative flex items-center justify-center shrink-0">
+              <OctagonalHalo className="w-64 h-64 sm:w-72 sm:h-72 text-[#14532D]/10 absolute pointer-events-none" />
+              <img
+                src="/assets/aistudio/logo_65694aac.png"
+                alt="شعار منصة مرويات ابن حزم من طريق الأندلسيين"
+                className="relative w-48 h-48 sm:w-56 sm:h-56 lg:w-72 lg:h-72 object-contain bg-transparent mix-blend-multiply select-none"
+              />
             </div>
           </div>
         </div>

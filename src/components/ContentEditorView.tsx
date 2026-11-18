@@ -15,12 +15,17 @@ import {
   Pencil,
   Shield,
   RefreshCw,
+  FileSpreadsheet,
+  Upload,
+  Wand2,
 } from 'lucide-react';
 import {
   ALL_RESEARCHER_PERMISSIONS,
   AuthenticatedUser,
   DEFAULT_ASSISTANT_PERMISSIONS,
   GharibEntry,
+  MadhabFiqhEntry,
+  MadhabName,
   MuhallaHadith,
   Narrator,
   NarratorGrade,
@@ -30,11 +35,23 @@ import {
   ResearcherPermission,
   ResearcherRole,
 } from '../types/hadith';
+import {
+  autoMatchIsnadChain,
+  downloadExcelWorkbook,
+  generateMuhallaExcelWorkbook,
+  generateMuhallaJsonTemplate,
+  generateNarratorsExcelWorkbook,
+  generateNarratorsJsonTemplate,
+  generateNarratorsReferenceExcelWorkbook,
+  ParsedHadithPreview,
+  parseHadithsFromFile,
+  parseNarratorsFromFile,
+} from '../utils/bulkImport';
 
 interface ContentEditorViewProps {
   hadiths: MuhallaHadith[];
   narrators: Narrator[];
-  initialTab: 'hadith' | 'narrator' | 'users' | 'export';
+  initialTab: 'hadith' | 'narrator' | 'bulk' | 'users' | 'export';
   editingHadithId: string | null;
   editingNarratorId: string | null;
   isD1Connected: boolean;
@@ -49,8 +66,10 @@ interface ContentEditorViewProps {
   ) => Promise<{ ok: boolean; error?: string }>;
   onSeedInitialD1: () => Promise<void>;
   onSaveHadith: (hadith: MuhallaHadith) => Promise<void>;
+  onSaveHadithsBatch: (hadiths: MuhallaHadith[]) => Promise<void>;
   onDeleteHadith: (id: string) => Promise<void>;
   onSaveNarrator: (narrator: Narrator) => Promise<void>;
+  onSaveNarratorsBatch: (narrators: Narrator[]) => Promise<void>;
   onDeleteNarrator: (id: string) => Promise<void>;
   onRefreshUsers: () => Promise<void>;
   onSaveUser: (payload: {
@@ -66,9 +85,17 @@ interface ContentEditorViewProps {
   onResetDefaults: () => void;
 }
 
+const DEFAULT_FOUR_MADHAHIB = (): MadhabFiqhEntry[] => [
+  { madhab: 'الحنفي', ruling: '', sourceBook: '', author: '', volumePage: '' },
+  { madhab: 'المالكي', ruling: '', sourceBook: '', author: '', volumePage: '' },
+  { madhab: 'الشافعي', ruling: '', sourceBook: '', author: '', volumePage: '' },
+  { madhab: 'الحنبلي', ruling: '', sourceBook: '', author: '', volumePage: '' },
+];
+
 const EMPTY_HADITH = (): MuhallaHadith => ({
   id: `muhalla_${Date.now()}`,
   volume: 1,
+  page: '',
   issueNumber: 1,
   kitab: 'كتاب الطهارة',
   issueTitle: '',
@@ -87,6 +114,7 @@ const EMPTY_HADITH = (): MuhallaHadith => ({
   gharib: [],
   fiqhAnalysis: '',
   otherMadhahibNotes: '',
+  fourMadhahibFiqh: DEFAULT_FOUR_MADHAHIB(),
   updatedAt: new Date().toISOString().slice(0, 10),
 });
 
@@ -136,8 +164,10 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   onUnlockUser,
   onSeedInitialD1,
   onSaveHadith,
+  onSaveHadithsBatch,
   onDeleteHadith,
   onSaveNarrator,
+  onSaveNarratorsBatch,
   onDeleteNarrator,
   onRefreshUsers,
   onSaveUser,
@@ -156,9 +186,9 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   const canDeleteRecords = isAdmin || userPerms.includes('delete_records');
   const canExportGithub = isAdmin || userPerms.includes('export_github');
 
-  const [subTab, setSubTab] = useState<'hadith' | 'narrator' | 'users' | 'export'>(
-    initialTab
-  );
+  const [subTab, setSubTab] = useState<
+    'hadith' | 'narrator' | 'bulk' | 'users' | 'export'
+  >(initialTab);
   const [hadithForm, setHadithForm] = useState<MuhallaHadith>(() => {
     const found = hadiths.find((h) => h.id === editingHadithId);
     return found
@@ -182,9 +212,19 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   const [passwordInput, setPasswordInput] = useState('');
   const [isBusy, setIsBusy] = useState(false);
 
-  const isTabAllowed = (tab: 'hadith' | 'narrator' | 'users' | 'export'): boolean => {
+  // Admin-only bulk templates, import & Isnad auto-linker states
+  const [pendingNarrators, setPendingNarrators] = useState<Narrator[]>([]);
+  const [pendingNarratorsFile, setPendingNarratorsFile] = useState('');
+  const [pendingHadiths, setPendingHadiths] = useState<ParsedHadithPreview[]>([]);
+  const [pendingHadithsFile, setPendingHadithsFile] = useState('');
+  const [relinkProposals, setRelinkProposals] = useState<ParsedHadithPreview[]>([]);
+
+  const isTabAllowed = (
+    tab: 'hadith' | 'narrator' | 'bulk' | 'users' | 'export'
+  ): boolean => {
     if (tab === 'hadith') return canEditHadiths;
     if (tab === 'narrator') return canEditNarrators;
+    if (tab === 'bulk') return isAdmin;
     if (tab === 'users') return isAdmin;
     if (tab === 'export') return canExportGithub;
     return false;
@@ -407,6 +447,133 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleBulkNarratorsFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = await parseNarratorsFromFile(file, narrators);
+      if (parsed.length === 0) {
+        showError('لم يتم العثور على صفوف رواة صالحة في الملف.');
+        return;
+      }
+      setPendingNarrators(parsed);
+      setPendingNarratorsFile(file.name);
+      showNotice(`تمت قراءة ${parsed.length} بطاقة راوٍ بنجاح. راجعها ثم اضغط اعتماد.`);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر قراءة ملف الرواة');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleCommitBulkNarrators = async () => {
+    if (pendingNarrators.length === 0) return;
+    setIsBusy(true);
+    try {
+      await onSaveNarratorsBatch(pendingNarrators);
+      const savedCount = pendingNarrators.length;
+      setPendingNarrators([]);
+      setPendingNarratorsFile('');
+      showNotice(`تم حفظ ${savedCount} راوياً في المنصة وقاعدة البيانات بنجاح.`);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر حفظ دفعة الرواة');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleBulkHadithsFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = await parseHadithsFromFile(file, hadiths, narrators);
+      if (parsed.length === 0) {
+        showError('لم يتم العثور على أحاديث صالحة في الملف.');
+        return;
+      }
+      setPendingHadiths(parsed);
+      setPendingHadithsFile(file.name);
+      showNotice(
+        `تم تحليل ${parsed.length} حديثاً وربط الرواة تلقائياً في الأسانيد. راجع المعاينة ثم اضغط اعتماد.`
+      );
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر قراءة ملف أحاديث المحلّى');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleCommitBulkHadiths = async () => {
+    if (pendingHadiths.length === 0) return;
+    setIsBusy(true);
+    try {
+      await onSaveHadithsBatch(pendingHadiths.map((p) => p.hadith));
+      const savedCount = pendingHadiths.length;
+      setPendingHadiths([]);
+      setPendingHadithsFile('');
+      showNotice(
+        `تم استيراد ${savedCount} حديثاً وربط سلاسل رواتها بنجاح في المنصة و D1.`
+      );
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر استيراد الأحاديث');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleScanExistingHadithsLinks = () => {
+    const proposals: ParsedHadithPreview[] = [];
+    for (const h of hadiths) {
+      const auto = autoMatchIsnadChain('', h.ibnHazmIsnadText, narrators);
+      if (auto.chainNarratorIds.length === 0) continue;
+      const prevIds = h.paths[0]?.chainNarratorIds || [];
+      const changed =
+        auto.chainNarratorIds.length !== prevIds.length ||
+        auto.chainNarratorIds.some((id, idx) => prevIds[idx] !== id);
+      if (!changed) continue;
+
+      const updatedPaths = h.paths.length
+        ? [{ ...h.paths[0], chainNarratorIds: auto.chainNarratorIds }, ...h.paths.slice(1)]
+        : [
+            {
+              id: `path_${h.id}`,
+              sourceLabel: 'طريق ابن حزم الأندلسي في المحلى',
+              sourceType: 'muhalla' as const,
+              chainNarratorIds: auto.chainNarratorIds,
+            },
+          ];
+
+      proposals.push({
+        hadith: { ...h, paths: updatedPaths },
+        matchedNames: auto.matchedNames,
+        unmatchedSegments: auto.unmatchedSegments,
+        isExistingUpdate: true,
+      });
+    }
+
+    setRelinkProposals(proposals);
+    if (proposals.length === 0) {
+      showNotice('جميع الأحاديث الحالية مرتبطة بأسانيدها المطابقة بالفعل.');
+    } else {
+      showNotice(`تم اقتراح تحديث ربط السند لـ ${proposals.length} حديثاً.`);
+    }
+  };
+
+  const handleApplyRelinkProposals = async () => {
+    if (relinkProposals.length === 0) return;
+    setIsBusy(true);
+    try {
+      await onSaveHadithsBatch(relinkProposals.map((p) => p.hadith));
+      const count = relinkProposals.length;
+      setRelinkProposals([]);
+      showNotice(`تم تحديث وربط سلاسل الرواة لـ ${count} حديثاً في المنصة و D1.`);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'تعذر تحديث روابط الأسانيد');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Cloudflare D1 Status & Multi-User Authentication Banner */}
@@ -510,12 +677,12 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                 </p>
               </>
             ) : (
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="font-semibold text-[#1C1917]">
                     {currentUser
                       ? `مرحباً ${currentUser.fullName} (${isAdmin ? 'مشرف عام' : 'باحث مساعد'})`
-                      : 'لوحة التحرير وإدارة المحتوى'}
+                      : 'صفحة الإعدادات والتعديلات — سجّل الدخول للمتابعة'}
                   </p>
                   {!isAdmin && currentUser && (
                     <p className="text-xs text-[#6B655E]">
@@ -528,6 +695,35 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                     </p>
                   )}
                 </div>
+                {!isLoggedIn && (
+                  <form
+                    onSubmit={handleUnlockSubmit}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value)}
+                      placeholder="اسم المستخدم..."
+                      dir="ltr"
+                      className="px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] w-40 text-left"
+                    />
+                    <input
+                      type="password"
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder="كلمة المرور..."
+                      className="px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isBusy}
+                      className="btn-hover-motion px-4 py-2 text-sm font-medium bg-[#14532D] text-white rounded-lg cursor-pointer whitespace-nowrap disabled:opacity-60"
+                    >
+                      دخول للتحرير
+                    </button>
+                  </form>
+                )}
               </div>
             )}
           </div>
@@ -542,66 +738,81 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
       </div>
 
       {/* Editor Sub-navigation */}
-      <div className="bg-white border border-[#E6E0D4] rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-1 p-1 bg-[#F3EFE6] rounded-lg">
-          {canEditHadiths && (
-            <button
-              onClick={() => setSubTab('hadith')}
-              className={`px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                subTab === 'hadith'
-                  ? 'bg-white text-[#1C1917] shadow-xs'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
-              }`}
-            >
-              تحرير وإضافة أحاديث المحلّى
-            </button>
-          )}
-          {canEditNarrators && (
-            <button
-              onClick={() => setSubTab('narrator')}
-              className={`px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                subTab === 'narrator'
-                  ? 'bg-white text-[#1C1917] shadow-xs'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
-              }`}
-            >
-              إضافة وتعديل الرواة الأندلسيين
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              onClick={() => setSubTab('users')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                subTab === 'users'
-                  ? 'bg-white text-[#14532D] shadow-xs font-semibold'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>فريق البحث والمهام</span>
-            </button>
-          )}
-          {canExportGithub && (
-            <button
-              onClick={() => setSubTab('export')}
-              className={`px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                subTab === 'export'
-                  ? 'bg-white text-[#1C1917] shadow-xs'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
-              }`}
-            >
-              تصدير الملفات لمستودع GitHub
-            </button>
+      {isLoggedIn && (
+        <div className="bg-white border border-[#E6E0D4] rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-[#F3EFE6] rounded-lg">
+            {canEditHadiths && (
+              <button
+                onClick={() => setSubTab('hadith')}
+                className={`px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  subTab === 'hadith'
+                    ? 'bg-white text-[#1C1917] shadow-xs'
+                    : 'text-[#57534E] hover:text-[#1C1917]'
+                }`}
+              >
+                تحرير وإضافة أحاديث المحلّى
+              </button>
+            )}
+            {canEditNarrators && (
+              <button
+                onClick={() => setSubTab('narrator')}
+                className={`px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  subTab === 'narrator'
+                    ? 'bg-white text-[#1C1917] shadow-xs'
+                    : 'text-[#57534E] hover:text-[#1C1917]'
+                }`}
+              >
+                إضافة وتعديل الرواة الأندلسيين
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => setSubTab('bulk')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  subTab === 'bulk'
+                    ? 'bg-white text-[#854D0E] shadow-xs font-semibold'
+                    : 'text-[#57534E] hover:text-[#1C1917]'
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>قوالب التفريغ والاستيراد الجماعي</span>
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => setSubTab('users')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  subTab === 'users'
+                    ? 'bg-white text-[#14532D] shadow-xs font-semibold'
+                    : 'text-[#57534E] hover:text-[#1C1917]'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>فريق البحث والمهام</span>
+              </button>
+            )}
+            {canExportGithub && (
+              <button
+                onClick={() => setSubTab('export')}
+                className={`px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  subTab === 'export'
+                    ? 'bg-white text-[#1C1917] shadow-xs'
+                    : 'text-[#57534E] hover:text-[#1C1917]'
+                }`}
+              >
+                تصدير الملفات لمستودع GitHub
+              </button>
+            )}
+          </div>
+
+          {savedNotice && (
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-[#14532D]">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>{savedNotice}</span>
+            </div>
           )}
         </div>
-
-        {savedNotice && (
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-[#14532D]">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{savedNotice}</span>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Empty permission notice if an assistant has no editor tabs enabled */}
       {isLoggedIn && !canEditHadiths && !canEditNarrators && !canExportGithub && !isAdmin && (
@@ -683,7 +894,11 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div
+            className={`grid grid-cols-1 gap-4 ${
+              isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'
+            }`}
+          >
             <label className="space-y-1.5 block">
               <span className="text-xs font-medium text-[#44403C]">الكتاب الفقهي</span>
               <input
@@ -704,6 +919,20 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                 className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
               />
             </label>
+            {isAdmin && (
+              <label className="space-y-1.5 block">
+                <span className="text-xs font-medium text-[#44403C]">الصفحة</span>
+                <input
+                  type="text"
+                  value={hadithForm.page || ''}
+                  onChange={(e) =>
+                    setHadithForm({ ...hadithForm, page: e.target.value })
+                  }
+                  placeholder="مثال: 112 أو 112-113"
+                  className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
+                />
+              </label>
+            )}
             <label className="space-y-1.5 block">
               <span className="text-xs font-medium text-[#44403C]">رقم المسألة</span>
               <input
@@ -766,21 +995,53 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
           {/* Chain Narrator Sequence Builder for Ibn Hazm Path */}
           {hadithForm.paths[0] && (
             <div className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-[#1C1917]">
                   تكوين شجرة سلسلة إسناد ابن حزم (من الصحابي إلى ابن حزم)
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updated = structuredClone(hadithForm.paths);
-                    updated[0].chainNarratorIds.push(narrators[0]?.id || 'ibn_hazm');
-                    setHadithForm({ ...hadithForm, paths: updated });
-                  }}
-                  className="text-xs font-medium text-[#14532D] hover:underline cursor-pointer"
-                >
-                  + إضافة طبقة راوٍ
-                </button>
+                <div className="flex items-center gap-3">
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const res = autoMatchIsnadChain(
+                          '',
+                          hadithForm.ibnHazmIsnadText,
+                          narrators
+                        );
+                        if (res.chainNarratorIds.length === 0) {
+                          showError('أدخل نص السند أولاً ليتم استخراج الرواة وربطهم.');
+                          return;
+                        }
+                        const updated = structuredClone(hadithForm.paths);
+                        updated[0].chainNarratorIds = res.chainNarratorIds;
+                        setHadithForm({ ...hadithForm, paths: updated });
+                        showNotice(
+                          `تم التعرف على ${res.chainNarratorIds.length} راوياً وربطهم بالسند.${
+                            res.unmatchedSegments.length > 0
+                              ? ` (أسماء غير مطابقة: ${res.unmatchedSegments.join('، ')})`
+                              : ''
+                          }`
+                        );
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[#854D0E] hover:underline cursor-pointer"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span>ربط تلقائي للرواة من نص السند</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = structuredClone(hadithForm.paths);
+                      updated[0].chainNarratorIds.push(narrators[0]?.id || 'ibn_hazm');
+                      setHadithForm({ ...hadithForm, paths: updated });
+                    }}
+                    className="text-xs font-medium text-[#14532D] hover:underline cursor-pointer"
+                  >
+                    + إضافة طبقة راوٍ
+                  </button>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {hadithForm.paths[0].chainNarratorIds.map((nid, idx) => (
@@ -860,6 +1121,133 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
               className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
             />
           </label>
+
+          {/* Four Madhahib Documented Fiqh Editor */}
+          <div className="space-y-3 pt-2 border-t border-[#E6E0D4]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[#1C1917]">
+                فقه الحديث في المذاهب الأربعة مع التوثيق (الكتاب والجزء والصفحة)
+              </span>
+              {(!hadithForm.fourMadhahibFiqh ||
+                hadithForm.fourMadhahibFiqh.length === 0) && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHadithForm((prev) => ({
+                      ...prev,
+                      fourMadhahibFiqh: DEFAULT_FOUR_MADHAHIB(),
+                    }))
+                  }
+                  className="text-xs font-medium text-[#14532D] hover:underline cursor-pointer"
+                >
+                  + تهيئة حقول المذاهب الأربعة
+                </button>
+              )}
+            </div>
+
+            {(
+              hadithForm.fourMadhahibFiqh && hadithForm.fourMadhahibFiqh.length > 0
+                ? hadithForm.fourMadhahibFiqh
+                : DEFAULT_FOUR_MADHAHIB()
+            ).map((entry, idx) => (
+              <div
+                key={`${entry.madhab}-${idx}`}
+                className="p-3 bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start"
+              >
+                <div className="md:col-span-2">
+                  <select
+                    value={entry.madhab}
+                    onChange={(e) => {
+                      const base =
+                        hadithForm.fourMadhahibFiqh &&
+                        hadithForm.fourMadhahibFiqh.length > 0
+                          ? [...hadithForm.fourMadhahibFiqh]
+                          : DEFAULT_FOUR_MADHAHIB();
+                      base[idx] = {
+                        ...base[idx],
+                        madhab: e.target.value as MadhabName,
+                      };
+                      setHadithForm({ ...hadithForm, fourMadhahibFiqh: base });
+                    }}
+                    className="w-full px-2.5 py-2 text-xs font-bold text-[#14532D] bg-white border border-[#E6E0D4] rounded-md"
+                  >
+                    <option value="الحنفي">الحنفي</option>
+                    <option value="المالكي">المالكي</option>
+                    <option value="الشافعي">الشافعي</option>
+                    <option value="الحنبلي">الحنبلي</option>
+                  </select>
+                </div>
+                <div className="md:col-span-4">
+                  <input
+                    type="text"
+                    placeholder={`القول الفقهي عند المذهب ${entry.madhab}...`}
+                    value={entry.ruling}
+                    onChange={(e) => {
+                      const base =
+                        hadithForm.fourMadhahibFiqh &&
+                        hadithForm.fourMadhahibFiqh.length > 0
+                          ? [...hadithForm.fourMadhahibFiqh]
+                          : DEFAULT_FOUR_MADHAHIB();
+                      base[idx] = { ...base[idx], ruling: e.target.value };
+                      setHadithForm({ ...hadithForm, fourMadhahibFiqh: base });
+                    }}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#E6E0D4] rounded-md"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <input
+                    type="text"
+                    placeholder="اسم الكتاب"
+                    value={entry.sourceBook}
+                    onChange={(e) => {
+                      const base =
+                        hadithForm.fourMadhahibFiqh &&
+                        hadithForm.fourMadhahibFiqh.length > 0
+                          ? [...hadithForm.fourMadhahibFiqh]
+                          : DEFAULT_FOUR_MADHAHIB();
+                      base[idx] = { ...base[idx], sourceBook: e.target.value };
+                      setHadithForm({ ...hadithForm, fourMadhahibFiqh: base });
+                    }}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#E6E0D4] rounded-md"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <input
+                    type="text"
+                    placeholder="المؤلف"
+                    value={entry.author || ''}
+                    onChange={(e) => {
+                      const base =
+                        hadithForm.fourMadhahibFiqh &&
+                        hadithForm.fourMadhahibFiqh.length > 0
+                          ? [...hadithForm.fourMadhahibFiqh]
+                          : DEFAULT_FOUR_MADHAHIB();
+                      base[idx] = { ...base[idx], author: e.target.value };
+                      setHadithForm({ ...hadithForm, fourMadhahibFiqh: base });
+                    }}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#E6E0D4] rounded-md"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <input
+                    type="text"
+                    placeholder="ج ... ص ..."
+                    value={entry.volumePage}
+                    onChange={(e) => {
+                      const base =
+                        hadithForm.fourMadhahibFiqh &&
+                        hadithForm.fourMadhahibFiqh.length > 0
+                          ? [...hadithForm.fourMadhahibFiqh]
+                          : DEFAULT_FOUR_MADHAHIB();
+                      base[idx] = { ...base[idx], volumePage: e.target.value };
+                      setHadithForm({ ...hadithForm, fourMadhahibFiqh: base });
+                    }}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#E6E0D4] rounded-md tabular-nums"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
 
           {/* Gharib Editor */}
           <div className="space-y-3 pt-2 border-t border-[#E6E0D4]">
@@ -1147,6 +1535,371 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             </button>
           </div>
         </form>
+      )}
+
+      {/* Sub-Tab 2.5: Admin-Only Templates, Bulk Import & Isnad Auto-Linking */}
+      {isAdmin && subTab === 'bulk' && (
+        <div className="space-y-6">
+          {/* Section A: Download Styled Excel Templates for Assistants */}
+          <div className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-5">
+            <div className="space-y-1.5 max-w-3xl">
+              <h3 className="text-lg font-bold text-[#1C1917]">
+                1. تحميل قوالب التفريغ للمساعدين (ملفات Excel منسقة + JSON)
+              </h3>
+              <p className="text-sm text-[#6B655E] leading-relaxed">
+                حمّل ملفات Excel المنسّقة من اليمين لليسار مع أعمدة واسعة لنص الحديث والمتن والسند، ووزّعها على المساعدين لتعبئتها ثم رفعها مباشرة هنا لربط الرواة في السند تلقائياً.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-[#14532D]">
+                    قالب تفريغ أحاديث المحلّى (Excel)
+                  </p>
+                    <p className="text-xs text-[#6B655E]">
+                      ترتيب الأعمدة: نص الحديث بالسند والمتن، المجلد، الصفحة، الكتاب، رقم المسألة، متن الحديث، سند الحديث، الحكم على الحديث (مع توثيق صاحب الحكم والكتاب والصفحة)، سلسلة الرواة، فقه الحديث، غريب الحديث (1000 صف جاهز).
+                    </p>
+                  </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={async () => {
+                      setIsBusy(true);
+                      try {
+                        const wb = await generateMuhallaExcelWorkbook(narrators);
+                        await downloadExcelWorkbook('قالب_تفريغ_أحاديث_المحلى.xlsx', wb);
+                      } catch (err) {
+                        showError(
+                          err instanceof Error ? err.message : 'تعذر إنشاء ملف Excel'
+                        );
+                      } finally {
+                        setIsBusy(false);
+                      }
+                    }}
+                    className="btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer disabled:opacity-60"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>تنزيل قالب Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadJson(
+                        'muhalla_hadiths_template.json',
+                        generateMuhallaJsonTemplate()
+                      )
+                    }
+                    className="btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-white border border-[#D6CEBE] hover:border-[#14532D] text-[#1C1917] rounded-lg cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>قالب JSON</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-[#854D0E]">
+                    قالب بطاقات الرواة ومرجع الأسماء (Excel)
+                  </p>
+                  <p className="text-xs text-[#6B655E]">
+                    يتضمّن الأندلسيين الخمسة الأساسيين (بقي بن مخلد، أحمد بن خالد، محمد بن وضاح، محمد بن عبد الملك بن أيمن، القاسم بن أصبغ) + 200 صف فارغ. وفي مرجع الأسماء: الاسم الكامل، الكنية، الطبقة، الحكم على الراوي، سنة الوفاة.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={async () => {
+                      setIsBusy(true);
+                      try {
+                        const wb = await generateNarratorsExcelWorkbook(narrators);
+                        await downloadExcelWorkbook('قالب_بطاقات_الرواة.xlsx', wb);
+                      } catch (err) {
+                        showError(
+                          err instanceof Error ? err.message : 'تعذر إنشاء ملف Excel'
+                        );
+                      } finally {
+                        setIsBusy(false);
+                      }
+                    }}
+                    className="btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-[#854D0E] hover:bg-[#713F12] text-white rounded-lg cursor-pointer disabled:opacity-60"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>قالب الرواة Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={async () => {
+                      setIsBusy(true);
+                      try {
+                        const wb = await generateNarratorsReferenceExcelWorkbook(narrators);
+                        await downloadExcelWorkbook('مرجع_الرواة_والأسماء.xlsx', wb);
+                      } catch (err) {
+                        showError(
+                          err instanceof Error ? err.message : 'تعذر إنشاء ملف المرجع'
+                        );
+                      } finally {
+                        setIsBusy(false);
+                      }
+                    }}
+                    className="btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg cursor-pointer disabled:opacity-60"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>مرجع الأسماء Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadJson(
+                        'narrators_template.json',
+                        generateNarratorsJsonTemplate()
+                      )
+                    }
+                    className="btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-white border border-[#D6CEBE] hover:border-[#854D0E] text-[#1C1917] rounded-lg cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>قالب JSON</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section B: Bulk Import Narrators */}
+          <div className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-[#1C1917]">
+                  2. استيراد بطاقات الرواة دفعة واحدة (Excel .xlsx / CSV / JSON)
+                </h3>
+                <p className="text-xs text-[#6B655E]">
+                  يفضّل استيراد بطاقات الرواة الجدد قبل استيراد الأحاديث ليتمكن النظام من ربط أسمائهم تلقائياً في الأسانيد.
+                </p>
+              </div>
+              <label className="btn-hover-motion inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] border border-[#D6CEBE] rounded-lg cursor-pointer">
+                <Upload className="w-4 h-4 text-[#854D0E]" />
+                <span>اختيار ملف رواة (.xlsx / .csv / .json)</span>
+                <input
+                  type="file"
+                  accept=".xlsx,.csv,.json"
+                  onChange={handleBulkNarratorsFile}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {pendingNarrators.length > 0 && (
+              <div className="space-y-3 pt-3 border-t border-[#E6E0D4]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-[#14532D] tabular-nums">
+                    الملف: {pendingNarratorsFile} · جاهز للاستيراد: {pendingNarrators.length} راوٍ
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingNarrators([]);
+                        setPendingNarratorsFile('');
+                      }}
+                      className="px-3 py-1.5 text-xs text-[#6B655E] border border-[#E6E0D4] rounded-lg cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={handleCommitBulkNarrators}
+                      className="btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer disabled:opacity-60"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>اعتماد وحفظ الرواة في المنصة و D1</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-[#E6E0D4] rounded-lg overflow-x-auto max-h-64">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-[#FBF9F5] border-b border-[#E6E0D4] text-[#6B655E]">
+                      <tr>
+                        <th className="py-2 px-3 font-medium">الاسم</th>
+                        <th className="py-2 px-3 font-medium">الطبقة</th>
+                        <th className="py-2 px-3 font-medium">الحكم على الراوي ومصدره</th>
+                        <th className="py-2 px-3 font-medium">الوفاة</th>
+                        <th className="py-2 px-3 font-medium">البلد</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E6E0D4]">
+                      {pendingNarrators.slice(0, 12).map((n) => (
+                        <tr key={n.id}>
+                          <td className="py-2 px-3 font-semibold text-[#1C1917]">{n.name}</td>
+                          <td className="py-2 px-3 text-[#57534E]">{n.tabaqah}</td>
+                          <td className="py-2 px-3 text-[#14532D]">
+                            {n.jarhTaadil?.[0]?.verdict
+                              ? `${n.jarhTaadil[0].verdict} — ${n.jarhTaadil[0].scholar}`
+                              : n.grade}
+                          </td>
+                          <td className="py-2 px-3 tabular-nums">{n.deathYearH || '-'}</td>
+                          <td className="py-2 px-3 text-[#57534E]">{n.region}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section C: Bulk Import Muhalla Hadiths + Automatic Isnad Narrator Matching */}
+          <div className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-[#1C1917]">
+                  3. الاستيراد الجماعي لأحاديث المحلّى والربط التلقائي للرواة في السند (Excel .xlsx / CSV / JSON)
+                </h3>
+                <p className="text-xs text-[#6B655E]">
+                  تقرأ الأداة ملف Excel مباشرة وتستخرج الرواة من عمود «سلسلة الرواة» أو من «نص السند» وتربطهم ببطاقات الرواة لتعمل شجرة الإسناد والنقر على كل راوٍ فور الاستيراد.
+                </p>
+              </div>
+              <label className="btn-hover-motion inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer">
+                <Upload className="w-4 h-4" />
+                <span>اختيار ملف أحاديث المحلّى (.xlsx / .csv / .json)</span>
+                <input
+                  type="file"
+                  accept=".xlsx,.csv,.json"
+                  onChange={handleBulkHadithsFile}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {pendingHadiths.length > 0 && (
+              <div className="space-y-3 pt-3 border-t border-[#E6E0D4]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-[#14532D] tabular-nums">
+                    الملف: {pendingHadithsFile} · الأحاديث المقروءة: {pendingHadiths.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingHadiths([]);
+                        setPendingHadithsFile('');
+                      }}
+                      className="px-3 py-1.5 text-xs text-[#6B655E] border border-[#E6E0D4] rounded-lg cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={handleCommitBulkHadiths}
+                      className="btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer disabled:opacity-60"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>اعتماد وحفظ الأحاديث وربط الأسانيد في D1</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-[#E6E0D4] rounded-lg overflow-x-auto max-h-80">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-[#FBF9F5] border-b border-[#E6E0D4] text-[#6B655E]">
+                      <tr>
+                        <th className="py-2 px-3 font-medium">الموضع</th>
+                        <th className="py-2 px-3 font-medium">المسألة</th>
+                        <th className="py-2 px-3 font-medium">الرواة المربوطون تلقائياً</th>
+                        <th className="py-2 px-3 font-medium">ملاحظات المطابقة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E6E0D4]">
+                      {pendingHadiths.slice(0, 20).map((item) => (
+                        <tr key={item.hadith.id} className="align-top">
+                          <td className="py-2 px-3 tabular-nums whitespace-nowrap text-[#57534E]">
+                            ج {item.hadith.volume}
+                            {item.hadith.page ? ` · ص ${item.hadith.page}` : ''} · م{' '}
+                            {item.hadith.issueNumber}
+                          </td>
+                          <td className="py-2 px-3 font-semibold text-[#1C1917] max-w-xs">
+                            {item.hadith.issueTitle}
+                          </td>
+                          <td className="py-2 px-3 text-[#14532D] leading-relaxed">
+                            {item.matchedNames.length > 0
+                              ? [...item.matchedNames].reverse().join(' ← ')
+                              : 'لم يُربط راوٍ بعد'}
+                          </td>
+                          <td className="py-2 px-3 text-[#854D0E]">
+                            {item.unmatchedSegments.length > 0
+                              ? `غير موجود بالمعجم: ${item.unmatchedSegments.join('، ')}`
+                              : 'مطابقة مكتملة'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section D: Scan & Auto-Link Existing Hadiths */}
+          <div className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-[#1C1917]">
+                  4. فحص وربط الرواة تلقائياً للأحاديث المسجلة حالياً
+                </h3>
+                <p className="text-xs text-[#6B655E]">
+                  بعد إضافة رواة جدد (مثل الرواة الأندلسيين الأساسيين)، افحص نصوص الأسانيد للأحاديث الحالية لتحديث سلسلة الرواة القابلة للنقر تلقائياً.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleScanExistingHadithsLinks}
+                className="btn-hover-motion inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] border border-[#D6CEBE] rounded-lg cursor-pointer"
+              >
+                <Wand2 className="w-4 h-4 text-[#854D0E]" />
+                <span>فحص نصوص الأسانيد للأحاديث الحالية</span>
+              </button>
+            </div>
+
+            {relinkProposals.length > 0 && (
+              <div className="space-y-3 pt-3 border-t border-[#E6E0D4]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-[#14532D] tabular-nums">
+                    أحاديث مقترح تحديث ربط رواتها: {relinkProposals.length}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={handleApplyRelinkProposals}
+                    className="btn-hover-motion inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer disabled:opacity-60"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>اعتماد وحفظ الروابط المحدّثة في D1</span>
+                  </button>
+                </div>
+
+                <div className="border border-[#E6E0D4] rounded-lg divide-y divide-[#E6E0D4] max-h-64 overflow-y-auto">
+                  {relinkProposals.map((item) => (
+                    <div key={item.hadith.id} className="p-3 text-xs space-y-1">
+                      <p className="font-semibold text-[#1C1917]">
+                        ج {item.hadith.volume} · مسألة {item.hadith.issueNumber}:{' '}
+                        {item.hadith.issueTitle}
+                      </p>
+                      <p className="text-[#14532D]">
+                        السلسلة الجديدة: {[...item.matchedNames].reverse().join(' ← ')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Sub-Tab 3: Multi-User Research Team & Per-Researcher Task System (Admin Only) */}

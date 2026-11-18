@@ -206,15 +206,17 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
               )}
             </div>
 
-            {/* Ibn Hazm's Verdict */}
-            <div className="bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl p-5 space-y-1.5 max-w-prose">
-              <h3 className="text-xs font-semibold text-[#854D0E]">
-                موقف الإمام ابن حزم الأندلسي من الراوي
-              </h3>
-              <p className="text-sm text-[#1C1917] leading-relaxed">
-                {activeNarrator.ibnHazmVerdict}
-              </p>
-            </div>
+            {/* Ibn Hazm's Verdict (rendered only if populated) */}
+            {activeNarrator.ibnHazmVerdict && activeNarrator.ibnHazmVerdict.trim() && (
+              <div className="bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl p-5 space-y-1.5 max-w-prose">
+                <h3 className="text-xs font-semibold text-[#854D0E]">
+                  موقف الإمام ابن حزم الأندلسي من الراوي
+                </h3>
+                <p className="text-sm text-[#1C1917] leading-relaxed">
+                  {activeNarrator.ibnHazmVerdict}
+                </p>
+              </div>
+            )}
 
             {/* Jarh and Taadil */}
             <div className="space-y-3 max-w-prose">

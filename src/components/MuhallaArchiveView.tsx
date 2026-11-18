@@ -8,8 +8,11 @@ import {
   Scale,
   Languages,
   ArrowUpLeft,
+  SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 import {
+  MadhabName,
   MuhallaHadith,
   Narrator,
   NineBookHadith,
@@ -46,6 +49,11 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKitab, setSelectedKitab] = useState<string>('الكل');
+  const [selectedVolume, setSelectedVolume] = useState<string>('الكل');
+  const [selectedNarratorId, setSelectedNarratorId] = useState<string>('الكل');
+  const [selectedMadhab, setSelectedMadhab] = useState<'الكل' | MadhabName>('الكل');
+  const [selectedHukm, setSelectedHukm] = useState<'الكل' | 'صحيح' | 'الزيادة / فيه نظر'>('الكل');
+  const [issueNumberFilter, setIssueNumberFilter] = useState('');
   const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('takhrij');
 
   const narratorMap = useMemo(() => {
@@ -65,18 +73,112 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
     return ['الكل', ...Array.from(set)];
   }, [hadiths]);
 
+  const volumesList = useMemo(() => {
+    const set = new Set<number>(hadiths.map((h) => h.volume));
+    return Array.from(set).sort((a, b) => a - b);
+  }, [hadiths]);
+
+  const linkedNarratorsList = useMemo(() => {
+    const usedIds = new Set<string>();
+    hadiths.forEach((h) =>
+      h.paths.forEach((p) => p.chainNarratorIds.forEach((id) => usedIds.add(id)))
+    );
+    return narrators.filter((n) => usedIds.has(n.id));
+  }, [hadiths, narrators]);
+
+  const hasActiveFilters =
+    Boolean(searchQuery.trim()) ||
+    Boolean(issueNumberFilter.trim()) ||
+    selectedKitab !== 'الكل' ||
+    selectedVolume !== 'الكل' ||
+    selectedNarratorId !== 'الكل' ||
+    selectedMadhab !== 'الكل' ||
+    selectedHukm !== 'الكل';
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setIssueNumberFilter('');
+    setSelectedKitab('الكل');
+    setSelectedVolume('الكل');
+    setSelectedNarratorId('الكل');
+    setSelectedMadhab('الكل');
+    setSelectedHukm('الكل');
+  };
+
   const filteredHadiths = useMemo(() => {
     const q = normalizeArabic(searchQuery);
+    const issueQ = issueNumberFilter.trim();
     return hadiths.filter((h) => {
-      const matchesKitab = selectedKitab === 'الكل' || h.kitab === selectedKitab;
-      if (!matchesKitab) return false;
+      if (selectedKitab !== 'الكل' && h.kitab !== selectedKitab) return false;
+      if (selectedVolume !== 'الكل' && String(h.volume) !== selectedVolume) {
+        return false;
+      }
+      if (selectedNarratorId !== 'الكل') {
+        const hasNarrator = h.paths.some((p) =>
+          p.chainNarratorIds.includes(selectedNarratorId)
+        );
+        if (!hasNarrator) return false;
+      }
+      if (selectedMadhab !== 'الكل') {
+        const hasMadhab = (h.fourMadhahibFiqh || []).some(
+          (m) => m.madhab === selectedMadhab && m.ruling?.trim()
+        );
+        if (!hasMadhab) return false;
+      }
+      if (selectedHukm !== 'الكل') {
+        const hukmNorm = normalizeArabic(h.ibnHazmHukm);
+        if (selectedHukm === 'صحيح') {
+          if (!hukmNorm.includes('صحيح') && !hukmNorm.includes('ثابت') && !hukmNorm.includes('حسن')) {
+            return false;
+          }
+        } else if (selectedHukm === 'الزيادة / فيه نظر') {
+          if (
+            !hukmNorm.includes('زيادة') &&
+            !hukmNorm.includes('ضعيف') &&
+            !hukmNorm.includes('مرسل') &&
+            !hukmNorm.includes('نظر') &&
+            !hukmNorm.includes('شاذ')
+          ) {
+            return false;
+          }
+        }
+      }
+      if (issueQ && !String(h.issueNumber).includes(issueQ)) {
+        return false;
+      }
       if (!q) return true;
+
+      const linkedNames = h.paths
+        .flatMap((p) => p.chainNarratorIds)
+        .map((id) => {
+          const n = narratorMap.get(id);
+          return n ? `${n.name} ${n.kunya || ''}` : id;
+        })
+        .join(' ');
+
+      const fiqhText = (h.fourMadhahibFiqh || [])
+        .map(
+          (m) =>
+            `${m.madhab} ${m.ruling} ${m.sourceBook} ${m.author || ''} ${m.volumePage}`
+        )
+        .join(' ');
+
       const searchable = normalizeArabic(
-        `${h.issueTitle} ${h.matnWithTashkeel} ${h.ibnHazmIsnadText} ${h.kitab} ${h.issueNumber}`
+        `${h.issueTitle} ${h.matnWithTashkeel} ${h.ibnHazmIsnadText} ${h.ibnHazmHukm} ${h.kitab} ${h.volume} الجزء ${h.volume} ج ${h.volume} ${h.page || ''} ${h.issueNumber} مسألة ${h.issueNumber} ${linkedNames} ${fiqhText}`
       );
       return searchable.includes(q);
     });
-  }, [hadiths, searchQuery, selectedKitab]);
+  }, [
+    hadiths,
+    searchQuery,
+    issueNumberFilter,
+    selectedKitab,
+    selectedVolume,
+    selectedNarratorId,
+    selectedMadhab,
+    selectedHukm,
+    narratorMap,
+  ]);
 
   const activeHadith = useMemo(
     () =>
@@ -118,7 +220,9 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
       <aside className="lg:col-span-4 bg-white border border-[#E6E0D4] rounded-xl overflow-hidden">
         <div className="p-4 border-b border-[#E6E0D4] space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base font-semibold text-[#1C1917]">فهرس مرويات المحلّى</h2>
+            <h2 className="text-base font-semibold text-[#1C1917]">
+              فهرس مرويات الأندلسيين
+            </h2>
             <span className="text-xs text-[#6B655E] tabular-nums">
               {filteredHadiths.length} من {hadiths.length}
             </span>
@@ -130,25 +234,129 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ابحث في المتن أو رقم المسألة..."
+              placeholder="ابحث في المتن، الرواة، المسألة، الجزء، الرقم..."
               className="w-full pr-9 pl-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] transition-colors"
             />
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
-            {kutubList.map((kitab) => (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {kutubList.map((kitab) => (
+                <button
+                  key={kitab}
+                  onClick={() => setSelectedKitab(kitab)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    selectedKitab === kitab
+                      ? 'bg-[#14532D] text-white'
+                      : 'bg-[#F3EFE6] text-[#57534E] hover:text-[#1C1917]'
+                  }`}
+                >
+                  {kitab}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <label className="space-y-1 block">
+                <span className="text-[11px] font-medium text-[#6B655E] flex items-center gap-1">
+                  <SlidersHorizontal className="w-3 h-3" />
+                  <span>تصفية بالجزء</span>
+                </span>
+                <select
+                  value={selectedVolume}
+                  onChange={(e) => setSelectedVolume(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] cursor-pointer"
+                >
+                  <option value="الكل">جميع الأجزاء</option>
+                  {volumesList.map((v) => (
+                    <option key={v} value={String(v)}>
+                      المجلد / الجزء {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 block">
+                <span className="text-[11px] font-medium text-[#6B655E]">
+                  تصفية بالراوي
+                </span>
+                <select
+                  value={selectedNarratorId}
+                  onChange={(e) => setSelectedNarratorId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] cursor-pointer"
+                >
+                  <option value="الكل">جميع الرواة</option>
+                  {linkedNarratorsList.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.name.split('(')[0].trim()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 block">
+                <span className="text-[11px] font-medium text-[#6B655E]">
+                  تصفية بالمذهب الفقهي
+                </span>
+                <select
+                  value={selectedMadhab}
+                  onChange={(e) =>
+                    setSelectedMadhab(e.target.value as 'الكل' | MadhabName)
+                  }
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] cursor-pointer"
+                >
+                  <option value="الكل">جميع المذاهب</option>
+                  <option value="الحنفي">المذهب الحنفي</option>
+                  <option value="المالكي">المذهب المالكي</option>
+                  <option value="الشافعي">المذهب الشافعي</option>
+                  <option value="الحنبلي">المذهب الحنبلي</option>
+                </select>
+              </label>
+
+              <label className="space-y-1 block">
+                <span className="text-[11px] font-medium text-[#6B655E]">
+                  تصفية بالحكم على الحديث
+                </span>
+                <select
+                  value={selectedHukm}
+                  onChange={(e) =>
+                    setSelectedHukm(
+                      e.target.value as 'الكل' | 'صحيح' | 'الزيادة / فيه نظر'
+                    )
+                  }
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] cursor-pointer"
+                >
+                  <option value="الكل">جميع الأحكام</option>
+                  <option value="صحيح">صحيح / ثابت</option>
+                  <option value="الزيادة / فيه نظر">زيادة / فيه نظر</option>
+                </select>
+              </label>
+
+              <label className="space-y-1 block col-span-2">
+                <span className="text-[11px] font-medium text-[#6B655E]">
+                  تصفية برقم المسألة في المحلّى
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={issueNumberFilter}
+                  onChange={(e) => setIssueNumberFilter(e.target.value)}
+                  placeholder="أدخل رقم المسألة (مثال: 112 أو 277)..."
+                  className="w-full px-2.5 py-1.5 text-xs bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D] tabular-nums"
+                />
+              </label>
+            </div>
+
+            {hasActiveFilters && (
               <button
-                key={kitab}
-                onClick={() => setSelectedKitab(kitab)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  selectedKitab === kitab
-                    ? 'bg-[#14532D] text-white'
-                    : 'bg-[#F3EFE6] text-[#57534E] hover:text-[#1C1917]'
-                }`}
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#854D0E] hover:text-[#14532D] cursor-pointer pt-0.5"
               >
-                {kitab}
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>مسح الفلاتر والبحث</span>
               </button>
-            ))}
+            )}
           </div>
         </div>
 
@@ -170,10 +378,16 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                       : 'bg-white hover:bg-[#FBF9F5]'
                   }`}
                 >
-                  <div className="flex items-center gap-2 text-xs text-[#6B655E] tabular-nums mb-1.5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#6B655E] tabular-nums mb-1.5">
                     <span>{item.kitab}</span>
                     <span aria-hidden="true">·</span>
                     <span>ج {item.volume}</span>
+                    {item.page && item.page.trim() && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>ص {item.page}</span>
+                      </>
+                    )}
                     <span aria-hidden="true">·</span>
                     <span>مسألة {item.issueNumber}</span>
                   </div>
@@ -205,6 +419,12 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
               <span>{activeHadith.kitab}</span>
               <span aria-hidden="true">·</span>
               <span>المجلد {activeHadith.volume}</span>
+              {activeHadith.page && activeHadith.page.trim() && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>الصفحة {activeHadith.page}</span>
+                </>
+              )}
               <span aria-hidden="true">·</span>
               <span>المسألة {activeHadith.issueNumber}</span>
             </div>
@@ -294,52 +514,129 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
           </div>
         </div>
 
-        {/* Sub-Navigation for Scholarly Disciplines */}
+        {/* Sub-Navigation for Scholarly Disciplines — Large Interactive Buttons */}
         <div className="pt-2">
-          <div className="flex flex-wrap items-center gap-1 p-1 bg-[#F3EFE6] rounded-lg w-fit">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <button
+              type="button"
               onClick={() => setActiveDetailTab('takhrij')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`btn-hover-motion group text-right p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
                 activeDetailTab === 'takhrij'
-                  ? 'bg-white text-[#1C1917] shadow-xs'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
+                  ? 'bg-[#14532D] text-white border-[#14532D] shadow-sm'
+                  : 'bg-[#FBF9F5] text-[#1C1917] border-[#E6E0D4] hover:border-[#14532D] hover:bg-[#EEF6F1]'
               }`}
             >
-              <BookMarked className="w-3.5 h-3.5" />
-              <span>التخريج في الكتب التسعة ({activeHadith.takhrijLinks.length})</span>
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                  activeDetailTab === 'takhrij'
+                    ? 'bg-white/15 text-white'
+                    : 'bg-[#F3EFE6] text-[#14532D] group-hover:bg-[#14532D] group-hover:text-white'
+                }`}
+              >
+                <BookMarked className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-snug">
+                  التخريج في الكتب التسعة
+                </p>
+                <p
+                  className={`text-xs tabular-nums mt-0.5 ${
+                    activeDetailTab === 'takhrij' ? 'text-white/85' : 'text-[#6B655E]'
+                  }`}
+                >
+                  {activeHadith.takhrijLinks.length} مواضع موثّقة
+                </p>
+              </div>
             </button>
+
             <button
+              type="button"
               onClick={() => setActiveDetailTab('fiqh')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`btn-hover-motion group text-right p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
                 activeDetailTab === 'fiqh'
-                  ? 'bg-white text-[#1C1917] shadow-xs'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
+                  ? 'bg-[#14532D] text-white border-[#14532D] shadow-sm'
+                  : 'bg-[#FBF9F5] text-[#1C1917] border-[#E6E0D4] hover:border-[#14532D] hover:bg-[#EEF6F1]'
               }`}
             >
-              <Scale className="w-3.5 h-3.5" />
-              <span>فقه الحديث</span>
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                  activeDetailTab === 'fiqh'
+                    ? 'bg-white/15 text-white'
+                    : 'bg-[#F3EFE6] text-[#14532D] group-hover:bg-[#14532D] group-hover:text-white'
+                }`}
+              >
+                <Scale className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-snug">فقه الحديث</p>
+                <p
+                  className={`text-xs mt-0.5 ${
+                    activeDetailTab === 'fiqh' ? 'text-white/85' : 'text-[#6B655E]'
+                  }`}
+                >
+                  ابن حزم والمذاهب الأربعة
+                </p>
+              </div>
             </button>
+
             <button
+              type="button"
               onClick={() => setActiveDetailTab('gharib')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`btn-hover-motion group text-right p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
                 activeDetailTab === 'gharib'
-                  ? 'bg-white text-[#1C1917] shadow-xs'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
+                  ? 'bg-[#14532D] text-white border-[#14532D] shadow-sm'
+                  : 'bg-[#FBF9F5] text-[#1C1917] border-[#E6E0D4] hover:border-[#14532D] hover:bg-[#EEF6F1]'
               }`}
             >
-              <Languages className="w-3.5 h-3.5" />
-              <span>غريب الحديث ({activeHadith.gharib.length})</span>
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                  activeDetailTab === 'gharib'
+                    ? 'bg-white/15 text-white'
+                    : 'bg-[#F3EFE6] text-[#14532D] group-hover:bg-[#14532D] group-hover:text-white'
+                }`}
+              >
+                <Languages className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-snug">غريب الحديث</p>
+                <p
+                  className={`text-xs tabular-nums mt-0.5 ${
+                    activeDetailTab === 'gharib' ? 'text-white/85' : 'text-[#6B655E]'
+                  }`}
+                >
+                  {activeHadith.gharib.length} مفردات مشروحة
+                </p>
+              </div>
             </button>
+
             <button
+              type="button"
               onClick={() => setActiveDetailTab('paths')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`btn-hover-motion group text-right p-4 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
                 activeDetailTab === 'paths'
-                  ? 'bg-white text-[#1C1917] shadow-xs'
-                  : 'text-[#57534E] hover:text-[#1C1917]'
+                  ? 'bg-[#14532D] text-white border-[#14532D] shadow-sm'
+                  : 'bg-[#FBF9F5] text-[#1C1917] border-[#E6E0D4] hover:border-[#14532D] hover:bg-[#EEF6F1]'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>طرق الحديث ({activeHadith.paths.length})</span>
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                  activeDetailTab === 'paths'
+                    ? 'bg-white/15 text-white'
+                    : 'bg-[#F3EFE6] text-[#14532D] group-hover:bg-[#14532D] group-hover:text-white'
+                }`}
+              >
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-snug">طرق الحديث</p>
+                <p
+                  className={`text-xs tabular-nums mt-0.5 ${
+                    activeDetailTab === 'paths' ? 'text-white/85' : 'text-[#6B655E]'
+                  }`}
+                >
+                  {activeHadith.paths.length} أسانيد مسجلة
+                </p>
+              </div>
             </button>
           </div>
 
@@ -433,8 +730,8 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
             )}
 
             {activeDetailTab === 'fiqh' && (
-              <div className="space-y-5 max-w-prose">
-                <div className="space-y-2">
+              <div className="space-y-5">
+                <div className="space-y-2 max-w-prose">
                   <h4 className="text-sm font-semibold text-[#1C1917]">
                     استنباط ابن حزم الأندلسي ومنهجه الفقهي في المسألة
                   </h4>
@@ -442,10 +739,54 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                     {activeHadith.fiqhAnalysis}
                   </p>
                 </div>
+
+                {activeHadith.fourMadhahibFiqh &&
+                  activeHadith.fourMadhahibFiqh.length > 0 && (
+                    <div className="pt-4 border-t border-[#E6E0D4] space-y-3">
+                      <h4 className="text-sm font-semibold text-[#1C1917]">
+                        فقه الحديث في المذاهب الأربعة مع التوثيق
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {activeHadith.fourMadhahibFiqh.map((entry, idx) => (
+                          <div
+                            key={`${entry.madhab}-${idx}`}
+                            className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-2.5"
+                          >
+                            <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-[#E6E0D4]/70">
+                              <span className="text-sm font-bold text-[#14532D]">
+                                المذهب {entry.madhab}
+                              </span>
+                              <span className="text-xs font-semibold text-[#854D0E] tabular-nums">
+                                {entry.volumePage}
+                              </span>
+                            </div>
+                            <p className="text-sm leading-relaxed text-[#292524]">
+                              {entry.ruling}
+                            </p>
+                            <div className="pt-2 border-t border-[#E6E0D4]/70 text-xs text-[#57534E] space-y-0.5">
+                              <p>
+                                <span className="font-semibold text-[#44403C]">
+                                  التوثيق — اسم الكتاب:{' '}
+                                </span>
+                                <span>{entry.sourceBook}</span>
+                              </p>
+                              <p>
+                                <span className="font-semibold text-[#44403C]">
+                                  المؤلف:{' '}
+                                </span>
+                                <span>{entry.author || 'معتمد المذهب'}</span>
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                 {activeHadith.otherMadhahibNotes && (
-                  <div className="pt-4 border-t border-[#E6E0D4] space-y-1.5">
+                  <div className="pt-4 border-t border-[#E6E0D4] space-y-1.5 max-w-prose">
                     <h4 className="text-sm font-semibold text-[#1C1917]">
-                      مقارنة بمذاهب الفقهاء
+                      خلاصة المقارنة الفقهية
                     </h4>
                     <p className="text-sm leading-relaxed text-[#44403C]">
                       {activeHadith.otherMadhahibNotes}

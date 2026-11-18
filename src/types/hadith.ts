@@ -50,9 +50,20 @@ export interface TakhrijLink {
   ruling?: string;
 }
 
+export type MadhabName = 'الحنفي' | 'المالكي' | 'الشافعي' | 'الحنبلي';
+
+export interface MadhabFiqhEntry {
+  madhab: MadhabName;
+  ruling: string;
+  sourceBook: string;
+  author?: string;
+  volumePage: string;
+}
+
 export interface MuhallaHadith {
   id: string;
   volume: number;
+  page?: string;
   issueNumber: number;
   kitab: string; // e.g., كتاب الطهارة، كتاب البيوع
   issueTitle: string;
@@ -64,6 +75,7 @@ export interface MuhallaHadith {
   gharib: GharibEntry[];
   fiqhAnalysis: string;
   otherMadhahibNotes?: string;
+  fourMadhahibFiqh?: MadhabFiqhEntry[];
   updatedAt: string;
 }
 
