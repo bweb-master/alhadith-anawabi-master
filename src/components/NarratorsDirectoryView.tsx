@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Pencil, UserPlus } from 'lucide-react';
+import { Search, Pencil, UserPlus, ArrowRight } from 'lucide-react';
 import { Narrator, NarratorOrigin } from '../types/hadith';
 import { normalizeArabic } from '../utils/arabic';
 
@@ -7,6 +7,7 @@ interface NarratorsDirectoryViewProps {
   narrators: Narrator[];
   selectedNarratorId: string;
   canEdit: boolean;
+  returnToHadith?: { issueTitle?: string; onBack: () => void } | null;
   onSelectNarrator: (id: string) => void;
   onEditNarrator: (id: string) => void;
   onNewNarrator: () => void;
@@ -24,6 +25,7 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
   narrators,
   selectedNarratorId,
   canEdit,
+  returnToHadith,
   onSelectNarrator,
   onEditNarrator,
   onNewNarrator,
@@ -154,6 +156,24 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
 
       {/* Narrator Detail Biography */}
       <section className="lg:col-span-8 bg-white border border-[#E6E0D4] rounded-xl p-6 lg:p-8 space-y-6">
+        {returnToHadith && (
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl">
+            <button
+              type="button"
+              onClick={returnToHadith.onBack}
+              className="btn-hover-motion inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#14532D] hover:bg-[#114224] rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <ArrowRight className="w-4 h-4" />
+              <span>العودة إلى الحديث</span>
+            </button>
+            {returnToHadith.issueTitle && (
+              <p className="text-xs text-[#57534E] truncate max-w-md">
+                {returnToHadith.issueTitle}
+              </p>
+            )}
+          </div>
+        )}
+
         {!activeNarrator ? (
           <p className="text-sm text-[#6B655E]">اختر راوياً لعرض ترجمته.</p>
         ) : (

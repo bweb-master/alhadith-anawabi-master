@@ -19,6 +19,10 @@ import {
 } from '../types/hadith';
 import { NINE_BOOKS_META } from '../data/seedData';
 import { computeTakhrijMatch, normalizeArabic } from '../utils/arabic';
+import {
+  segmentIsnadWithNarrators,
+  splitFullHadithIntoIsnadAndMatn,
+} from '../utils/isnadHighlight';
 
 interface MuhallaArchiveViewProps {
   hadiths: MuhallaHadith[];
@@ -28,7 +32,7 @@ interface MuhallaArchiveViewProps {
   isAdmin: boolean;
   onSelectHadith: (id: string) => void;
   onOpenTree: (hadithId: string) => void;
-  onOpenNarrator: (narratorId: string) => void;
+  onOpenNarrator: (narratorId: string, fromHadithId?: string) => void;
   onEditHadith: (hadithId: string) => void;
   onRunAutoTakhrij: (text: string) => void;
 }
@@ -164,7 +168,7 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
         .join(' ');
 
       const searchable = normalizeArabic(
-        `${h.issueTitle} ${h.matnWithTashkeel} ${h.ibnHazmIsnadText} ${h.ibnHazmHukm} ${h.kitab} ${h.volume} الجزء ${h.volume} ج ${h.volume} ${h.page || ''} ${h.issueNumber} مسألة ${h.issueNumber} ${linkedNames} ${fiqhText}`
+        `${h.serialNumber ?? ''} ${h.issueTitle} ${h.fullHadithText || ''} ${h.matnWithTashkeel} ${h.ibnHazmIsnadText} ${h.takhrijSummary || ''} ${h.ibnHazmHukm} ${h.kitab} ${h.volume} الجزء ${h.volume} ج ${h.volume} ${h.page || ''} ${h.issueNumber} مسألة ${h.issueNumber} ${linkedNames} ${fiqhText}`
       );
       return searchable.includes(q);
     });
@@ -186,6 +190,88 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
       filteredHadiths[0] ||
       hadiths[0],
     [hadiths, filteredHadiths, selectedHadithId]
+  );
+
+  const preferredChainIds = useMemo(() => {
+    if (!activeHadith) return [];
+    return activeHadith.paths.flatMap((p) => p.chainNarratorIds);
+  }, [activeHadith]);
+
+  const fullHadithComposition = useMemo(() => {
+    if (!activeHadith) {
+      return { isnadText: '', matnText: '', isSeparateFallback: false };
+    }
+    const rawFull = activeHadith.fullHadithText?.trim();
+    const rawMatn = activeHadith.matnWithTashkeel?.trim() || '';
+    const rawIsnad = activeHadith.ibnHazmIsnadText?.trim() || '';
+
+    if (rawFull) {
+      const { isnadPart, matnPart } = splitFullHadithIntoIsnadAndMatn(
+        rawFull,
+        rawMatn
+      );
+      if (matnPart) {
+        return {
+          isnadText: isnadPart,
+          matnText: matnPart,
+          isSeparateFallback: false,
+        };
+      }
+      // fullHadithText may not contain matnWithTashkeel verbatim; check if matn is separate
+      const matnAlreadyInside =
+        rawMatn.length >= 8 &&
+        normalizeArabic(rawFull).includes(normalizeArabic(rawMatn).slice(0, 20));
+      return {
+        isnadText: isnadPart,
+        matnText: matnAlreadyInside ? '' : rawMatn ? `«${rawMatn}»` : '',
+        isSeparateFallback: false,
+      };
+    }
+
+    // Compose complete hadith from ibnHazmIsnadText + matnWithTashkeel
+    const { isnadPart } = splitFullHadithIntoIsnadAndMatn(rawIsnad, rawMatn);
+    const cleanedIsnad = (isnadPart || rawIsnad)
+      .replace(/\s*\.\.\.\s*$/, '')
+      .replace(/\.$/, ':')
+      .trim();
+
+    return {
+      isnadText: cleanedIsnad,
+      matnText: rawMatn ? `«${rawMatn}»` : '',
+      isSeparateFallback: true,
+    };
+  }, [activeHadith]);
+
+  const isnadSegments = useMemo(
+    () =>
+      segmentIsnadWithNarrators(
+        fullHadithComposition.isnadText,
+        narrators,
+        preferredChainIds
+      ),
+    [fullHadithComposition.isnadText, narrators, preferredChainIds]
+  );
+
+  const hasSeparateIsnadNote = useMemo(() => {
+    if (!activeHadith || fullHadithComposition.isSeparateFallback) return false;
+    const rawIsnad = activeHadith.ibnHazmIsnadText?.trim();
+    if (!rawIsnad) return false;
+    return (
+      normalizeArabic(rawIsnad) !==
+      normalizeArabic(fullHadithComposition.isnadText)
+    );
+  }, [activeHadith, fullHadithComposition]);
+
+  const separateIsnadSegments = useMemo(
+    () =>
+      hasSeparateIsnadNote && activeHadith
+        ? segmentIsnadWithNarrators(
+            activeHadith.ibnHazmIsnadText,
+            narrators,
+            preferredChainIds
+          )
+        : [],
+    [hasSeparateIsnadNote, activeHadith, narrators, preferredChainIds]
   );
 
   // Compute live automatic Takhrij candidates from the loaded Nine Books corpus
@@ -379,6 +465,14 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                   }`}
                 >
                   <div className="flex flex-wrap items-center gap-2 text-xs text-[#6B655E] tabular-nums mb-1.5">
+                    {typeof item.serialNumber === 'number' && (
+                      <>
+                        <span className="font-semibold text-[#14532D]">
+                          #{item.serialNumber}
+                        </span>
+                        <span aria-hidden="true">·</span>
+                      </>
+                    )}
                     <span>{item.kitab}</span>
                     <span aria-hidden="true">·</span>
                     <span>ج {item.volume}</span>
@@ -414,6 +508,14 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
         <div className="flex flex-wrap items-start justify-between gap-4 pb-5 border-b border-[#E6E0D4]">
           <div className="space-y-2 max-w-2xl">
             <div className="flex flex-wrap items-center gap-2 text-sm text-[#6B655E] tabular-nums">
+              {typeof activeHadith.serialNumber === 'number' && (
+                <>
+                  <span className="font-semibold text-[#14532D]">
+                    الرقم الترتيبي {activeHadith.serialNumber}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
               <span>المحلى بالآثار</span>
               <span aria-hidden="true">·</span>
               <span>{activeHadith.kitab}</span>
@@ -453,23 +555,88 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
           </div>
         </div>
 
-        {/* Prophetic Text (Matn) & Ibn Hazm Isnad */}
+        {/* Complete Hadith (Isnad with Clickable Narrators + Prophetic Matn) */}
         <div className="space-y-5 max-w-prose">
           <div className="islamic-hero-pattern border border-[#E6E0D4] rounded-xl p-6 space-y-4">
-            <p className="text-sm font-semibold text-[#854D0E]">متن الحديث النبوي</p>
-            <p className="font-hadith text-2xl lg:text-3xl text-[#1C1917]">
-              «{activeHadith.matnWithTashkeel}»
+            <p className="text-sm font-semibold text-[#854D0E]">
+              نص الحديث كاملاً بالسند والمتن (من المحلّى)
             </p>
+
+            <div className="font-hadith text-xl lg:text-2xl leading-[2.15] font-normal text-[#1C1917]">
+              {isnadSegments.length > 0 && (
+                <span>
+                  {isnadSegments.map((seg, idx) =>
+                    seg.type === 'text' ? (
+                      <React.Fragment key={`seg-t-${idx}`}>
+                        {seg.text}
+                      </React.Fragment>
+                    ) : (
+                      <button
+                        key={`seg-n-${seg.narrator.id}-${idx}`}
+                        type="button"
+                        onClick={() => onOpenNarrator(seg.narrator.id, activeHadith.id)}
+                        title={`${seg.narrator.name} — اضغط لعرض ترجمة الراوي ودراسته`}
+                        className={`inline font-hadith text-[length:inherit] leading-[inherit] font-normal underline decoration-dotted underline-offset-[6px] hover:decoration-solid rounded px-0.5 transition-colors cursor-pointer ${
+                          seg.narrator.origin === 'andalusian'
+                            ? 'text-[#854D0E] decoration-[#854D0E]/55 hover:bg-[#854D0E]/12'
+                            : 'text-[#14532D] decoration-[#14532D]/50 hover:bg-[#14532D]/10'
+                        }`}
+                      >
+                        {seg.text}
+                      </button>
+                    )
+                  )}{' '}
+                </span>
+              )}
+              {fullHadithComposition.matnText && (
+                <span className="font-hadith text-[length:inherit] leading-[inherit] font-normal text-[#1C1917]">
+                  {fullHadithComposition.matnText}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 pt-3 border-t border-[#E6E0D4]/80 text-xs text-[#57534E]">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#854D0E]" />
+                <span>راوٍ أندلسي (قابل للنقر)</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#14532D]" />
+                <span>صحابي أو راوٍ مشرقي (قابل للنقر)</span>
+              </span>
+            </div>
           </div>
 
-          <div className="space-y-2.5">
-            <h3 className="text-base font-semibold text-[#1C1917]">
-              سند ابن حزم الأندلسي في المحلّى
-            </h3>
-            <p className="font-hadith text-xl text-[#44403C] leading-relaxed">
-              {activeHadith.ibnHazmIsnadText}
-            </p>
-          </div>
+          {hasSeparateIsnadNote && separateIsnadSegments.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-[#1C1917]">
+                سند ابن حزم الأندلسي المختصر في المحلّى
+              </h3>
+              <p className="font-hadith text-xl lg:text-2xl leading-[2.15] font-normal text-[#44403C]">
+                {separateIsnadSegments.map((seg, idx) =>
+                  seg.type === 'text' ? (
+                    <React.Fragment key={`sep-t-${idx}`}>
+                      {seg.text}
+                    </React.Fragment>
+                  ) : (
+                    <button
+                      key={`sep-n-${seg.narrator.id}-${idx}`}
+                      type="button"
+                      onClick={() => onOpenNarrator(seg.narrator.id, activeHadith.id)}
+                      title={`${seg.narrator.name} — اضغط لعرض ترجمة الراوي`}
+                      className={`inline font-hadith text-[length:inherit] leading-[inherit] font-normal underline decoration-dotted underline-offset-[5px] hover:decoration-solid rounded px-0.5 transition-colors cursor-pointer ${
+                        seg.narrator.origin === 'andalusian'
+                          ? 'text-[#854D0E] decoration-[#854D0E]/55 hover:bg-[#854D0E]/12'
+                          : 'text-[#14532D] decoration-[#14532D]/50 hover:bg-[#14532D]/10'
+                      }`}
+                    >
+                      {seg.text}
+                    </button>
+                  )
+                )}
+              </p>
+            </div>
+          )}
 
           {/* Clickable Narrator Chain Sequence */}
           {activeHadith.paths[0] && (
@@ -486,7 +653,7 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                     return (
                       <React.Fragment key={`${nid}-${idx}`}>
                         <button
-                          onClick={() => onOpenNarrator(nid)}
+                          onClick={() => onOpenNarrator(nid, activeHadith.id)}
                           className={`btn-hover-motion px-3 py-1.5 rounded-md border cursor-pointer whitespace-nowrap ${
                             isAndalusian
                               ? 'border-[#854D0E]/35 bg-[#854D0E]/5 text-[#78350F] hover:bg-[#854D0E]/15'
@@ -644,6 +811,16 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
           <div className="mt-5">
             {activeDetailTab === 'takhrij' && (
               <div className="space-y-6">
+                {activeHadith.takhrijSummary && activeHadith.takhrijSummary.trim() && (
+                  <div className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-1.5">
+                    <h4 className="text-sm font-semibold text-[#14532D]">
+                      خلاصة تخريج الحديث
+                    </h4>
+                    <p className="text-sm leading-relaxed text-[#292524]">
+                      {activeHadith.takhrijSummary}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <div className="flex items-center justify-between gap-4 mb-3">
                     <h4 className="text-sm font-semibold text-[#1C1917]">
@@ -659,7 +836,11 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                   </div>
 
                   {activeHadith.takhrijLinks.length === 0 ? (
-                    <p className="text-sm text-[#6B655E]">لم يتم ربط مواضع تخريج بعد.</p>
+                    <p className="text-sm text-[#6B655E]">
+                      {activeHadith.takhrijSummary?.trim()
+                        ? 'لم تُربط صفوف تفصيلية في جدول الكتب التسعة بعد.'
+                        : 'لم يتم ربط مواضع تخريج بعد.'}
+                    </p>
                   ) : (
                     <div className="border border-[#E6E0D4] rounded-lg overflow-hidden">
                       <table className="w-full text-right text-sm">

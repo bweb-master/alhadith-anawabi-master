@@ -170,6 +170,10 @@ export default function App() {
   >('hadith');
   const [editingHadithId, setEditingHadithId] = useState<string | null>(null);
   const [editingNarratorId, setEditingNarratorId] = useState<string | null>(null);
+  const [narratorReturnTarget, setNarratorReturnTarget] = useState<{
+    section: 'muhalla' | 'tree';
+    hadithId: string;
+  } | null>(null);
 
   // Cloudflare D1 integration state
   const [isD1Connected, setIsD1Connected] = useState(false);
@@ -861,7 +865,14 @@ export default function App() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveSection(item.id)}
+                  onClick={() => {
+                    if (item.id !== 'narrators') {
+                      setNarratorReturnTarget(null);
+                    } else {
+                      setNarratorReturnTarget(null);
+                    }
+                    setActiveSection(item.id);
+                  }}
                   className={`btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border whitespace-nowrap shrink-0 cursor-pointer ${
                     isActive
                       ? 'bg-[#14532D] text-white border-[#14532D] shadow-xs'
@@ -998,7 +1009,10 @@ export default function App() {
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => {
+                  setNarratorReturnTarget(null);
+                  setActiveSection(item.id);
+                }}
                 className={`btn-hover-motion inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border whitespace-nowrap shrink-0 cursor-pointer ${
                   isActive
                     ? 'bg-[#14532D] text-white border-[#14532D]'
@@ -1044,9 +1058,18 @@ export default function App() {
               setSelectedHadithId(id);
               setActiveSection('tree');
             }}
-            onOpenNarrator={(nid) => {
+            onOpenNarrator={(nid, fromHadithId) => {
+              const targetHadithId = fromHadithId || selectedHadithId;
+              if (fromHadithId) {
+                setSelectedHadithId(fromHadithId);
+              }
+              setNarratorReturnTarget({
+                section: 'muhalla',
+                hadithId: targetHadithId,
+              });
               setSelectedNarratorId(nid);
               setActiveSection('narrators');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             onEditHadith={(id) => {
               setEditingHadithId(id);
@@ -1083,8 +1106,13 @@ export default function App() {
             selectedHadithId={selectedHadithId}
             onSelectHadith={setSelectedHadithId}
             onOpenNarratorInDirectory={(nid) => {
+              setNarratorReturnTarget({
+                section: 'tree',
+                hadithId: selectedHadithId,
+              });
               setSelectedNarratorId(nid);
               setActiveSection('narrators');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
           />
         )}
@@ -1094,6 +1122,21 @@ export default function App() {
             narrators={narrators}
             selectedNarratorId={selectedNarratorId}
             canEdit={hasPerm('edit_narrators')}
+            returnToHadith={
+              narratorReturnTarget
+                ? {
+                    issueTitle:
+                      hadiths.find((h) => h.id === narratorReturnTarget.hadithId)
+                        ?.issueTitle || '',
+                    onBack: () => {
+                      setSelectedHadithId(narratorReturnTarget.hadithId);
+                      setActiveSection(narratorReturnTarget.section);
+                      setNarratorReturnTarget(null);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    },
+                  }
+                : null
+            }
             onSelectNarrator={setSelectedNarratorId}
             onEditNarrator={(nid) => {
               setEditingNarratorId(nid);
