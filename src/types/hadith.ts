@@ -62,13 +62,16 @@ export interface MadhabFiqhEntry {
 
 export interface MuhallaHadith {
   id: string;
+  serialNumber?: number;
   volume: number;
   page?: string;
   issueNumber: number;
   kitab: string; // e.g., كتاب الطهارة، كتاب البيوع
   issueTitle: string;
+  fullHadithText?: string;
   matnWithTashkeel: string;
   ibnHazmIsnadText: string;
+  takhrijSummary?: string;
   ibnHazmHukm: string;
   paths: IsnadPath[];
   takhrijLinks: TakhrijLink[];

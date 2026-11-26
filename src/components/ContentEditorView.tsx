@@ -94,13 +94,16 @@ const DEFAULT_FOUR_MADHAHIB = (): MadhabFiqhEntry[] => [
 
 const EMPTY_HADITH = (): MuhallaHadith => ({
   id: `muhalla_${Date.now()}`,
+  serialNumber: undefined,
   volume: 1,
   page: '',
   issueNumber: 1,
   kitab: 'كتاب الطهارة',
   issueTitle: '',
+  fullHadithText: '',
   matnWithTashkeel: '',
   ibnHazmIsnadText: '',
+  takhrijSummary: '',
   ibnHazmHukm: 'صحيح متصل الإسناد',
   paths: [
     {
@@ -218,6 +221,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   const [pendingHadiths, setPendingHadiths] = useState<ParsedHadithPreview[]>([]);
   const [pendingHadithsFile, setPendingHadithsFile] = useState('');
   const [relinkProposals, setRelinkProposals] = useState<ParsedHadithPreview[]>([]);
+  const [chainTextDraft, setChainTextDraft] = useState('');
 
   const isTabAllowed = (
     tab: 'hadith' | 'narrator' | 'bulk' | 'users' | 'export'
@@ -255,11 +259,13 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   useEffect(() => {
     if (editingHadithId === '__NEW__') {
       setHadithForm(EMPTY_HADITH());
+      setChainTextDraft('');
       if (canEditHadiths) setSubTab('hadith');
     } else if (editingHadithId) {
       const found = hadiths.find((h) => h.id === editingHadithId);
       if (found) {
         setHadithForm(structuredClone(found));
+        setChainTextDraft('');
         if (canEditHadiths) setSubTab('hadith');
       }
     }
@@ -433,6 +439,13 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
       source: 'النهاية لابن الأثير',
     };
     setHadithForm((prev) => ({ ...prev, gharib: [...prev.gharib, newEntry] }));
+  };
+
+  const addNarratorRulingRow = () => {
+    setNarratorForm((prev) => ({
+      ...prev,
+      jarhTaadil: [...(prev.jarhTaadil || []), { scholar: '', verdict: '' }],
+    }));
   };
 
   const downloadJson = (filename: string, data: unknown) => {
@@ -842,6 +855,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                   hadiths.some((h) => h.id === hadithForm.id) ? hadithForm.id : '__NEW__'
                 }
                 onChange={(e) => {
+                  setChainTextDraft('');
                   if (e.target.value === '__NEW__') {
                     setHadithForm(EMPTY_HADITH());
                   } else {
@@ -863,7 +877,10 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setHadithForm(EMPTY_HADITH())}
+                onClick={() => {
+                  setHadithForm(EMPTY_HADITH());
+                  setChainTextDraft('');
+                }}
                 className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -878,6 +895,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                     try {
                       await onDeleteHadith(hadithForm.id);
                       setHadithForm(EMPTY_HADITH());
+                      setChainTextDraft('');
                       showNotice('تم حذف السجل.');
                     } catch (err) {
                       showError(err instanceof Error ? err.message : 'تعذر حذف السجل');
@@ -894,18 +912,20 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             </div>
           </div>
 
-          <div
-            className={`grid grid-cols-1 gap-4 ${
-              isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'
-            }`}
-          >
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
             <label className="space-y-1.5 block">
-              <span className="text-xs font-medium text-[#44403C]">الكتاب الفقهي</span>
+              <span className="text-xs font-medium text-[#44403C]">الرقم الترتيبي</span>
               <input
-                type="text"
-                value={hadithForm.kitab}
-                onChange={(e) => setHadithForm({ ...hadithForm, kitab: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+                type="number"
+                value={hadithForm.serialNumber ?? ''}
+                onChange={(e) =>
+                  setHadithForm({
+                    ...hadithForm,
+                    serialNumber: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+                placeholder={`مثال: ${hadiths.length + 1}`}
+                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums focus:outline-none focus:border-[#14532D]"
               />
             </label>
             <label className="space-y-1.5 block">
@@ -919,20 +939,27 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                 className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
               />
             </label>
-            {isAdmin && (
-              <label className="space-y-1.5 block">
-                <span className="text-xs font-medium text-[#44403C]">الصفحة</span>
-                <input
-                  type="text"
-                  value={hadithForm.page || ''}
-                  onChange={(e) =>
-                    setHadithForm({ ...hadithForm, page: e.target.value })
-                  }
-                  placeholder="مثال: 112 أو 112-113"
-                  className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
-                />
-              </label>
-            )}
+            <label className="space-y-1.5 block">
+              <span className="text-xs font-medium text-[#44403C]">الصفحة</span>
+              <input
+                type="text"
+                value={hadithForm.page || ''}
+                onChange={(e) =>
+                  setHadithForm({ ...hadithForm, page: e.target.value })
+                }
+                placeholder="مثال: 112 أو 112-113"
+                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
+              />
+            </label>
+            <label className="space-y-1.5 block">
+              <span className="text-xs font-medium text-[#44403C]">الكتاب الفقهي</span>
+              <input
+                type="text"
+                value={hadithForm.kitab}
+                onChange={(e) => setHadithForm({ ...hadithForm, kitab: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+              />
+            </label>
             <label className="space-y-1.5 block">
               <span className="text-xs font-medium text-[#44403C]">رقم المسألة</span>
               <input
@@ -966,7 +993,22 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
           </label>
 
           <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-[#44403C]">متن الحديث النبوي</span>
+            <span className="text-xs font-medium text-[#44403C]">
+              نص الحديث بالسند والمتن (كاملاً كما ورد في المحلّى)
+            </span>
+            <textarea
+              rows={3}
+              value={hadithForm.fullHadithText || ''}
+              onChange={(e) =>
+                setHadithForm({ ...hadithForm, fullHadithText: e.target.value })
+              }
+              placeholder="أدخل نص الحديث كاملاً بسنده ومتنه من المحلّى..."
+              className="w-full px-3 py-2 text-sm font-hadith bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+            />
+          </label>
+
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">متن الحديث</span>
             <textarea
               rows={3}
               required
@@ -980,7 +1022,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
 
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">
-              نص سند ابن حزم في المحلى
+              سند الحديث (نص سند ابن حزم في المحلّى)
             </span>
             <textarea
               rows={2}
@@ -992,44 +1034,57 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             />
           </label>
 
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">
+              تخريج الحديث (مواضع الحديث في الكتب التسعة وغيرها)
+            </span>
+            <textarea
+              rows={2}
+              value={hadithForm.takhrijSummary || ''}
+              onChange={(e) =>
+                setHadithForm({ ...hadithForm, takhrijSummary: e.target.value })
+              }
+              placeholder="مثال: أخرجه البخاري (رقم 1)، ومسلم (رقم 1907)، وأبو داود (رقم 2201)..."
+              className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg focus:outline-none focus:border-[#14532D]"
+            />
+          </label>
+
           {/* Chain Narrator Sequence Builder for Ibn Hazm Path */}
           {hadithForm.paths[0] && (
             <div className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-[#1C1917]">
-                  تكوين شجرة سلسلة إسناد ابن حزم (من الصحابي إلى ابن حزم)
+                  سلسلة الرواة (من الصحابي إلى ابن حزم)
                 </span>
                 <div className="flex items-center gap-3">
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const res = autoMatchIsnadChain(
-                          '',
-                          hadithForm.ibnHazmIsnadText,
-                          narrators
-                        );
-                        if (res.chainNarratorIds.length === 0) {
-                          showError('أدخل نص السند أولاً ليتم استخراج الرواة وربطهم.');
-                          return;
-                        }
-                        const updated = structuredClone(hadithForm.paths);
-                        updated[0].chainNarratorIds = res.chainNarratorIds;
-                        setHadithForm({ ...hadithForm, paths: updated });
-                        showNotice(
-                          `تم التعرف على ${res.chainNarratorIds.length} راوياً وربطهم بالسند.${
-                            res.unmatchedSegments.length > 0
-                              ? ` (أسماء غير مطابقة: ${res.unmatchedSegments.join('، ')})`
-                              : ''
-                          }`
-                        );
-                      }}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-[#854D0E] hover:underline cursor-pointer"
-                    >
-                      <Wand2 className="w-3.5 h-3.5" />
-                      <span>ربط تلقائي للرواة من نص السند</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const res = autoMatchIsnadChain(
+                        chainTextDraft,
+                        hadithForm.ibnHazmIsnadText,
+                        narrators
+                      );
+                      if (res.chainNarratorIds.length === 0) {
+                        showError('أدخل نص السند أو سلسلة الرواة ليتم التعرف على الرواة وربطهم.');
+                        return;
+                      }
+                      const updated = structuredClone(hadithForm.paths);
+                      updated[0].chainNarratorIds = res.chainNarratorIds;
+                      setHadithForm({ ...hadithForm, paths: updated });
+                      showNotice(
+                        `تم التعرف على ${res.chainNarratorIds.length} راوياً وربطهم بالسند.${
+                          res.unmatchedSegments.length > 0
+                            ? ` (أسماء غير مطابقة: ${res.unmatchedSegments.join('، ')})`
+                            : ''
+                        }`
+                      );
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[#854D0E] hover:underline cursor-pointer"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    <span>ربط تلقائي للرواة من السند</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1043,6 +1098,44 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                   </button>
                 </div>
               </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={chainTextDraft}
+                  onChange={(e) => setChainTextDraft(e.target.value)}
+                  placeholder="أو اكتب سلسلة الرواة مفصولة بفاصلة مثل الإكسل: عمر بن الخطاب، علقمة بن وقاص، ...، ابن حزم"
+                  className="flex-1 px-3 py-1.5 text-xs bg-white border border-[#E6E0D4] rounded-md focus:outline-none focus:border-[#14532D]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!chainTextDraft.trim()) {
+                      showError('اكتب أسماء الرواة مفصولة بفاصلة أولاً.');
+                      return;
+                    }
+                    const res = autoMatchIsnadChain(chainTextDraft, '', narrators);
+                    if (res.chainNarratorIds.length === 0) {
+                      showError('لم يُعثر على رواة مطابقين في قاعدة الرواة الحالية.');
+                      return;
+                    }
+                    const updated = structuredClone(hadithForm.paths);
+                    updated[0].chainNarratorIds = res.chainNarratorIds;
+                    setHadithForm({ ...hadithForm, paths: updated });
+                    showNotice(
+                      `تم تطبيق السلسلة (${res.chainNarratorIds.length} راوياً).${
+                        res.unmatchedSegments.length > 0
+                          ? ` أسماء غير مسجلة بعد: ${res.unmatchedSegments.join('، ')}`
+                          : ''
+                      }`
+                    );
+                  }}
+                  className="px-3 py-1.5 text-xs font-medium bg-[#14532D] hover:bg-[#114224] text-white rounded-md cursor-pointer whitespace-nowrap"
+                >
+                  تطبيق السلسلة النصية
+                </button>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 {hadithForm.paths[0].chainNarratorIds.map((nid, idx) => (
                   <div key={idx} className="flex items-center gap-1">
@@ -1082,7 +1175,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="space-y-1.5 block">
               <span className="text-xs font-medium text-[#44403C]">
-                حكم ابن حزم على الحديث
+                الحكم على الحديث وتوثيقه (صاحب الحكم والكتاب والصفحة)
               </span>
               <input
                 type="text"
@@ -1090,6 +1183,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                 onChange={(e) =>
                   setHadithForm({ ...hadithForm, ibnHazmHukm: e.target.value })
                 }
+                placeholder="مثال: صحيح متصل الإسناد — ابن حزم، المحلّى ج 1 ص 112"
                 className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
               />
             </label>
@@ -1415,7 +1509,28 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             </label>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <label className="space-y-1.5 block">
+              <span className="text-xs font-medium text-[#44403C]">الطبقة</span>
+              <input
+                type="text"
+                list="tabaqah-excel-options"
+                value={narratorForm.tabaqah}
+                onChange={(e) =>
+                  setNarratorForm({ ...narratorForm, tabaqah: e.target.value })
+                }
+                placeholder="صحابي / تابعي / تابعي التابعين / راو / مصنف"
+                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
+              />
+              <datalist id="tabaqah-excel-options">
+                <option value="صحابي" />
+                <option value="تابعي" />
+                <option value="تابعي التابعين" />
+                <option value="راو" />
+                <option value="مصنف" />
+              </datalist>
+            </label>
+
             <label className="space-y-1.5 block">
               <span className="text-xs font-medium text-[#44403C]">التصنيف / المدرسة</span>
               <select
@@ -1436,7 +1551,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             </label>
 
             <label className="space-y-1.5 block">
-              <span className="text-xs font-medium text-[#44403C]">الرتبة</span>
+              <span className="text-xs font-medium text-[#44403C]">الرتبة المختصرة</span>
               <select
                 value={narratorForm.grade}
                 onChange={(e) =>
@@ -1455,6 +1570,44 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                 <option value="إمام مصنف">إمام مصنف</option>
               </select>
             </label>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <label className="space-y-1.5 block">
+              <span className="text-xs font-medium text-[#44403C]">
+                سنة الازدياد (هـ)
+              </span>
+              <input
+                type="number"
+                value={narratorForm.birthYearH || ''}
+                onChange={(e) =>
+                  setNarratorForm({
+                    ...narratorForm,
+                    birthYearH: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+                placeholder="مثال: 201"
+                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
+              />
+            </label>
+
+            <label className="space-y-1.5 block">
+              <span className="text-xs font-medium text-[#44403C]">
+                سنة الوفاة (هـ)
+              </span>
+              <input
+                type="number"
+                value={narratorForm.deathYearH || ''}
+                onChange={(e) =>
+                  setNarratorForm({
+                    ...narratorForm,
+                    deathYearH: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+                placeholder="مثال: 276"
+                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
+              />
+            </label>
 
             <label className="space-y-1.5 block">
               <span className="text-xs font-medium text-[#44403C]">البلد / الإقليم</span>
@@ -1467,38 +1620,73 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                 className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
               />
             </label>
+          </div>
 
-            <label className="space-y-1.5 block">
-              <span className="text-xs font-medium text-[#44403C]">سنة الوفاة (هـ)</span>
-              <input
-                type="number"
-                value={narratorForm.deathYearH || ''}
-                onChange={(e) =>
-                  setNarratorForm({
-                    ...narratorForm,
-                    deathYearH: e.target.value ? Number(e.target.value) : undefined,
-                  })
-                }
-                className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg tabular-nums"
-              />
-            </label>
+          {/* Narrator Ruling & Sources (matches Excel 'الحكم على الراوي (الحكم ومصدره)') */}
+          <div className="space-y-2.5 pt-2 border-t border-[#E6E0D4]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-[#1C1917]">
+                الحكم على الراوي (الحكم ومصدره — أقوال أئمة الجرح والتعديل)
+              </span>
+              <button
+                type="button"
+                onClick={addNarratorRulingRow}
+                className="text-xs font-medium text-[#14532D] hover:underline cursor-pointer"
+              >
+                + إضافة حكم ومصدر
+              </button>
+            </div>
+            {(narratorForm.jarhTaadil.length > 0
+              ? narratorForm.jarhTaadil
+              : [{ scholar: '', verdict: '' }]
+            ).map((jt, idx) => (
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="الحكم على الراوي (مثال: ثقة حجة مأمون...)"
+                  value={jt.verdict}
+                  onChange={(e) => {
+                    const next =
+                      narratorForm.jarhTaadil.length > 0
+                        ? [...narratorForm.jarhTaadil]
+                        : [{ scholar: '', verdict: '' }];
+                    next[idx] = { ...next[idx], verdict: e.target.value };
+                    setNarratorForm({ ...narratorForm, jarhTaadil: next });
+                  }}
+                  className="md:col-span-6 px-3 py-1.5 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-md"
+                />
+                <input
+                  type="text"
+                  placeholder="مصدر الحكم (الذهبي، سير أعلام النبلاء ج ... ص ...)"
+                  value={jt.scholar}
+                  onChange={(e) => {
+                    const next =
+                      narratorForm.jarhTaadil.length > 0
+                        ? [...narratorForm.jarhTaadil]
+                        : [{ scholar: '', verdict: '' }];
+                    next[idx] = { ...next[idx], scholar: e.target.value };
+                    setNarratorForm({ ...narratorForm, jarhTaadil: next });
+                  }}
+                  className="md:col-span-5 px-3 py-1.5 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-md"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = [...narratorForm.jarhTaadil];
+                    next.splice(idx, 1);
+                    setNarratorForm({ ...narratorForm, jarhTaadil: next });
+                  }}
+                  className="md:col-span-1 text-xs text-red-600 hover:underline cursor-pointer"
+                >
+                  حذف
+                </button>
+              </div>
+            ))}
           </div>
 
           <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-[#44403C]">الطبقة</span>
-            <input
-              type="text"
-              value={narratorForm.tabaqah}
-              onChange={(e) =>
-                setNarratorForm({ ...narratorForm, tabaqah: e.target.value })
-              }
-              className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
-            />
-          </label>
-
-          <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">
-              موقف ابن حزم من الراوي
+              موقف ابن حزم من الراوي (اختياري)
             </span>
             <textarea
               rows={2}
@@ -1547,7 +1735,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                 1. تحميل قوالب التفريغ للمساعدين (ملفات Excel منسقة + JSON)
               </h3>
               <p className="text-sm text-[#6B655E] leading-relaxed">
-                حمّل ملفات Excel المنسّقة من اليمين لليسار مع أعمدة واسعة لنص الحديث والمتن والسند، ووزّعها على المساعدين لتعبئتها ثم رفعها مباشرة هنا لربط الرواة في السند تلقائياً.
+                حمّل ملفات Excel المنسّقة من اليمين لليسار مع التفاف النص التلقائي وتمدد ارتفاع الصفوف ليتكيّف مع المحتوى دون أن يمتد لخانة أخرى. وعند النسخ من مواقع أو ملفات Word، يُنصح باللصق كـ «نص فقط» (Ctrl+Shift+V) للحفاظ على تنسيق الخانات.
               </p>
             </div>
 
@@ -1558,7 +1746,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                     قالب تفريغ أحاديث المحلّى (Excel)
                   </p>
                     <p className="text-xs text-[#6B655E]">
-                      ترتيب الأعمدة: نص الحديث بالسند والمتن، المجلد، الصفحة، الكتاب، رقم المسألة، متن الحديث، سند الحديث، الحكم على الحديث (مع توثيق صاحب الحكم والكتاب والصفحة)، سلسلة الرواة، فقه الحديث، غريب الحديث (1000 صف جاهز).
+                      ترتيب الأعمدة: الرقم الترتيبي، نص الحديث بالسند والمتن، المجلد، الصفحة، الكتاب، رقم المسألة، متن الحديث، سند الحديث، تخريج الحديث، الحكم على الحديث (مع توثيق صاحب الحكم والكتاب والصفحة)، سلسلة الرواة، فقه الحديث، غريب الحديث (1000 صف جاهز).
                     </p>
                   </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1605,7 +1793,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
                     قالب بطاقات الرواة ومرجع الأسماء (Excel)
                   </p>
                   <p className="text-xs text-[#6B655E]">
-                    يتضمّن الأندلسيين الخمسة الأساسيين (بقي بن مخلد، أحمد بن خالد، محمد بن وضاح، محمد بن عبد الملك بن أيمن، القاسم بن أصبغ) + 200 صف فارغ. وفي مرجع الأسماء: الاسم الكامل، الكنية، الطبقة، الحكم على الراوي، سنة الوفاة.
+                    يتضمّن الأندلسيين الخمسة الأساسيين + 200 صف فارغ مع خانة سنة الازدياد قبل سنة الوفاة (الاسم الكامل، الكنية، الطبقة، الحكم على الراوي، سنة الازدياد، سنة الوفاة، البلد، ملاحظات). وفي مرجع الأسماء: الاسم الكامل، الكنية، الطبقة، الحكم على الراوي، سنة الوفاة.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

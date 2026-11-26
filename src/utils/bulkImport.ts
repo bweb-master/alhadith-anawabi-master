@@ -427,12 +427,91 @@ function getNarratorRulingWithSource(n: Narrator): string {
   return n.grade;
 }
 
+function applyColumnDefaults(
+  ws: ExcelJS.Worksheet,
+  centeredCols: Set<number>
+): void {
+  const totalCols = ws.columns.length;
+  for (let c = 1; c <= totalCols; c++) {
+    const col = ws.getColumn(c);
+    const isCentered = centeredCols.has(c);
+    col.font = {
+      name: 'Arial',
+      size: 9.5,
+      color: { argb: 'FF1C1917' },
+    };
+    col.alignment = {
+      horizontal: isCentered ? 'center' : 'right',
+      vertical: 'top',
+      wrapText: true,
+      readingOrder: 'rtl',
+    };
+  }
+}
+
+function estimateWrappedRowHeight(
+  values: unknown[],
+  colWidths: number[],
+  minHeight = 38,
+  fontScale = 0.65,
+  lineHeight = 24
+): number {
+  let maxLines = 1;
+  values.forEach((val, idx) => {
+    const text = String(val ?? '').trim();
+    if (!text) return;
+    const width = Math.max(8, (colWidths[idx] || 20) - 2);
+    const charsPerLine = Math.max(6, Math.floor(width * fontScale));
+    const paragraphs = text.split(/\r?\n/);
+    let totalLines = 0;
+
+    for (const p of paragraphs) {
+      const words = p.trim().split(/\s+/).filter(Boolean);
+      if (words.length === 0) {
+        totalLines += 1;
+        continue;
+      }
+      let linesForPara = 1;
+      let curLen = 0;
+      for (const w of words) {
+        // Strip zero-width Arabic diacritics when counting horizontal advance
+        const baseLen =
+          w.replace(/[\u064B-\u065F\u0670\u0640]/g, '').length || w.length;
+        const effectiveLen = Math.ceil(baseLen * 1.05);
+        if (curLen === 0) {
+          if (effectiveLen > charsPerLine) {
+            linesForPara += Math.ceil(effectiveLen / charsPerLine) - 1;
+            curLen = effectiveLen % charsPerLine || charsPerLine;
+          } else {
+            curLen = effectiveLen;
+          }
+        } else if (curLen + 1 + effectiveLen <= charsPerLine) {
+          curLen += 1 + effectiveLen;
+        } else {
+          linesForPara += 1;
+          if (effectiveLen > charsPerLine) {
+            linesForPara += Math.ceil(effectiveLen / charsPerLine) - 1;
+            curLen = effectiveLen % charsPerLine || charsPerLine;
+          } else {
+            curLen = effectiveLen;
+          }
+        }
+      }
+      totalLines += linesForPara;
+    }
+
+    if (totalLines > maxLines) maxLines = totalLines;
+  });
+  return Math.max(minHeight, maxLines * lineHeight + 24);
+}
+
 function styleHeaderRow(
   row: ExcelJS.Row,
   bgHex: string,
-  fontSize = 12
+  fontSize = 12,
+  rowHeight = 52
 ): void {
-  row.height = 42;
+  row.height = rowHeight;
   row.eachCell((cell) => {
     cell.font = {
       name: 'Traditional Arabic',
@@ -464,15 +543,20 @@ function styleDataRow(
   row: ExcelJS.Row,
   centeredCols: Set<number>,
   rowIndex: number,
-  height: number
+  fixedHeight?: number
 ): void {
-  row.height = height;
+  // Only set explicit row height for pre-filled sample rows.
+  // Leaving row.height unset on blank rows omits customHeight="1" in Excel XML,
+  // allowing Excel to automatically expand/adapt row height to pasted or typed content.
+  if (typeof fixedHeight === 'number') {
+    row.height = fixedHeight;
+  }
   const fillHex = rowIndex % 2 === 0 ? 'FFFBF9F5' : 'FFFFFFFF';
   row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
     const isCentered = centeredCols.has(colNumber);
     cell.font = {
       name: 'Arial',
-      size: 11,
+      size: 9.5,
       color: { argb: 'FF1C1917' },
     };
     cell.fill = {
@@ -501,6 +585,7 @@ interface CoreAndalusianRow {
   kunya: string;
   tabaqah: string;
   ruling: string;
+  birthYearH: number;
   deathYearH: number;
   region: string;
   notes: string;
@@ -514,6 +599,7 @@ const CORE_ANDALUSIAN_DEFAULTS: CoreAndalusianRow[] = [
     tabaqah: 'راو',
     ruling:
       'ثقة حجة، الإمام القدوة الحافظ المجتهد شيخ الإسلام بالأندلس — الذهبي، سير أعلام النبلاء ج 13 ص 285؛ ابن الفرضي، تاريخ علماء الأندلس ج 1 ص 91',
+    birthYearH: 201,
     deathYearH: 276,
     region: 'قرطبة - الأندلس',
     notes: 'صاحب المسند الكبير المرتب على الصحابة وأبواب الفقه، وأحد مؤسسي المدرسة الحديثية الأندلسية.',
@@ -525,6 +611,7 @@ const CORE_ANDALUSIAN_DEFAULTS: CoreAndalusianRow[] = [
     tabaqah: 'راو',
     ruling:
       'ثقة حجة مأمون، إمام في الحديث والفقه بصير بالرجال — ابن الفرضي، تاريخ علماء الأندلس ج 1 ص 31؛ الذهبي، السير ج 15 ص 232',
+    birthYearH: 246,
     deathYearH: 322,
     region: 'قرطبة - الأندلس',
     notes: 'جمع بين الرواية الحديثية والفقه، وأخذ عن بقي بن مخلد ومحمد بن وضاح، وروى عنه ابن مفرج.',
@@ -536,6 +623,7 @@ const CORE_ANDALUSIAN_DEFAULTS: CoreAndalusianRow[] = [
     tabaqah: 'راو',
     ruling:
       'ثقة حجة، إمام أهل الأندلس في الحديث وبصير بعلله — ابن الفرضي، تاريخ علماء الأندلس ج 2 ص 13؛ الذهبي، السير ج 13 ص 445',
+    birthYearH: 199,
     deathYearH: 287,
     region: 'قرطبة - الأندلس',
     notes: 'ممن أدخلوا مصنف ابن أبي شيبة ومسندات المشرق إلى الأندلس.',
@@ -547,6 +635,7 @@ const CORE_ANDALUSIAN_DEFAULTS: CoreAndalusianRow[] = [
     tabaqah: 'راو',
     ruling:
       'ثقة حجة نبيل مأمون، حافظ للحديث عالم بعلله — ابن الفرضي، تاريخ علماء الأندلس ج 2 ص 44؛ الذهبي، السير ج 15 ص 329',
+    birthYearH: 252,
     deathYearH: 330,
     region: 'قرطبة - الأندلس',
     notes: 'رحل إلى المشرق ولقي أبا داود السجستاني وروى سننه وأدخلها إلى الأندلس، وله كتاب السنن.',
@@ -558,6 +647,7 @@ const CORE_ANDALUSIAN_DEFAULTS: CoreAndalusianRow[] = [
     tabaqah: 'راو',
     ruling:
       'ثقة حجة مأمون، مسند الأندلس وعالمها — الذهبي، سير أعلام النبلاء ج 15 ص 472؛ ابن الفرضي، تاريخ علماء الأندلس ج 1 ص 300',
+    birthYearH: 247,
     deathYearH: 340,
     region: 'بيانة / قرطبة - الأندلس',
     notes: 'صاحب المصنف في السنن والمنتقى، وهو حلقة الوصل الكبرى بين بقي بن مخلد وابن وضاح وبين شيوخ ابن حزم.',
@@ -580,6 +670,7 @@ function getFiveCoreAndalusians(narrators?: Narrator[]): CoreAndalusianRow[] {
       tabaqah: getTabaqahLabelForExport(live),
       ruling:
         live.jarhTaadil && live.jarhTaadil.length > 0 ? liveRuling : def.ruling,
+      birthYearH: live.birthYearH || def.birthYearH,
       deathYearH: live.deathYearH || def.deathYearH,
       region: live.region || def.region,
       notes: live.notes || def.notes,
@@ -598,32 +689,46 @@ export async function generateMuhallaExcelWorkbook(
     views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],
   });
 
-  ws.columns = [
-    { header: 'نص الحديث بالسند والمتن', key: 'fullText', width: 64 },
+  const muhallaCols = [
+    { header: 'الرقم الترتيبي', key: 'serialNumber', width: 13 },
+    { header: 'نص الحديث بالسند والمتن', key: 'fullText', width: 68 },
     { header: 'المجلد', key: 'volume', width: 10 },
     { header: 'الصفحة', key: 'page', width: 11 },
     { header: 'الكتاب', key: 'kitab', width: 24 },
     { header: 'رقم المسألة', key: 'issueNumber', width: 13 },
-    { header: 'متن الحديث', key: 'matn', width: 58 },
-    { header: 'سند الحديث', key: 'isnad', width: 58 },
+    { header: 'متن الحديث', key: 'matn', width: 60 },
+    { header: 'سند الحديث', key: 'isnad', width: 60 },
+    { header: 'تخريج الحديث', key: 'takhrij', width: 52 },
     {
       header: 'الحكم على الحديث وتوثيقه (صاحب الحكم والكتاب والصفحة)',
       key: 'hukm',
-      width: 48,
+      width: 52,
     },
     {
       header: 'سلسلة الرواة (من الصحابي إلى ابن حزم مفصولة بـ ,)',
       key: 'chain',
-      width: 50,
+      width: 52,
     },
-    { header: 'فقه الحديث', key: 'fiqh', width: 48 },
-    { header: 'غريب الحديث', key: 'gharib', width: 38 },
+    { header: 'فقه الحديث', key: 'fiqh', width: 50 },
+    { header: 'غريب الحديث', key: 'gharib', width: 42 },
   ];
+  ws.columns = muhallaCols;
+  const centeredCols = new Set([1, 3, 4, 6]);
+  applyColumnDefaults(ws, centeredCols);
 
-  styleHeaderRow(ws.getRow(1), '14532D', 12);
+  const muhallaWidths = muhallaCols.map((c) => c.width);
+  const muhallaHeaderHeight = estimateWrappedRowHeight(
+    muhallaCols.map((c) => c.header),
+    muhallaWidths,
+    54,
+    0.58,
+    22
+  );
+  styleHeaderRow(ws.getRow(1), '14532D', 12, muhallaHeaderHeight);
 
   const sampleRows = [
     [
+      1,
       'حدثنا أحمد بن محمد الطلمنكي، حدثنا ابن مفرج، حدثنا قاسم بن أصبغ، عن بقي بن مخلد... عن يحيى بن سعيد الأنصاري، عن محمد بن إبراهيم التيمي، عن علقمة بن وقاص، عن عمر بن الخطاب رضي الله عنه قال: سمعت رسول الله ﷺ يقول: «إنما الأعمال بالنيات، وإنما لكل امرئ ما نوى...».',
       1,
       '112',
@@ -631,12 +736,14 @@ export async function generateMuhallaExcelWorkbook(
       65,
       'إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى، فَمَنْ كَانَتْ هِجْرَتُهُ إِلَى اللَّهِ وَرَسُولِهِ فَهِجْرَتُهُ إِلَى اللَّهِ وَرَسُولِهِ.',
       'حدثنا أحمد بن محمد الطلمنكي، حدثنا ابن مفرج، حدثنا قاسم بن أصبغ، حدثنا بقي بن مخلد... عن يحيى بن سعيد الأنصاري، عن محمد بن إبراهيم التيمي، عن علقمة بن وقاص الليثي، عن عمر بن الخطاب رضي الله عنه.',
+      'أخرجه البخاري (رقم 1) في بدء الوحي، ومسلم (رقم 1907) في الإمارة، وأبو داود (رقم 2201)، والترمذي (رقم 1647)، والنسائي (رقم 75)، وابن ماجه (رقم 4227).',
       'صحيح متصل الإسناد بنقل العدول — ابن حزم، المحلّى بالآثار، ج 1 ص 112 (وأخرجه البخاري رقم 1 ومسلم رقم 1907).',
       'عمر بن الخطاب، علقمة بن وقاص، محمد بن إبراهيم التيمي، يحيى بن سعيد الأنصاري، بقي بن مخلد، قاسم بن أصبغ، ابن مفرج، الطلمنكي، ابن حزم',
       'استدل ابن حزم بهذا الحديث على وجوب النية في كل عبادة من وضوء وغسل وتيمم وصلاة.',
       'النيات: جمع نية وهي القصد وعزم القلب | امرئ: كل شخص مكلف',
     ],
     [
+      2,
       'حدثنا أحمد بن محمد الطلمنكي، حدثنا ابن مفرج، حدثنا قاسم بن أصبغ... عن مالك بن أنس، عن نافع، عن عبد الله بن عمر رضي الله عنهما أن رسول الله ﷺ قال: «صلاة الجماعة تفضل صلاة الفذ بسبع وعشرين درجة».',
       3,
       '45',
@@ -644,6 +751,7 @@ export async function generateMuhallaExcelWorkbook(
       505,
       'صَلَاةُ الْجَمَاعَةِ تَفْضُلُ صَلَاةَ الْفَذِّ بِسَبْعٍ وَعِشْرِينَ دَرَجَةً.',
       'حدثنا أحمد بن محمد الطلمنكي، حدثنا ابن مفرج، حدثنا قاسم بن أصبغ... عن مالك بن أنس، عن نافع، عن عبد الله بن عمر رضي الله عنهما.',
+      'أخرجه البخاري (رقم 645) في الأذان، ومسلم (رقم 650) في المساجد، ومالك في الموطأ (ج 1 ص 129)، والترمذي (رقم 215)، والنسائي (رقم 837).',
       'صحيح متصل الإسناد إلى مالك عن نافع عن ابن عمر — ابن حزم، المحلّى بالآثار، ج 3 ص 45 (وأخرجه البخاري رقم 645).',
       'عبد الله بن عمر، نافع، مالك بن أنس، قاسم بن أصبغ، ابن مفرج، الطلمنكي، ابن حزم',
       'بيان فضل صلاة الجماعة ومناقشة مذهب ابن حزم في وجوبها على الأعيان عند القدرة.',
@@ -651,41 +759,57 @@ export async function generateMuhallaExcelWorkbook(
     ],
   ];
 
-  const centeredCols = new Set([2, 3, 5]);
   sampleRows.forEach((values, i) => {
     const r = ws.addRow(values);
-    styleDataRow(r, centeredCols, i, 108);
+    const dynamicHeight = estimateWrappedRowHeight(values, muhallaWidths, 72, 0.72, 22);
+    styleDataRow(r, centeredCols, i, dynamicHeight);
   });
 
-  // Pre-formatted empty workspace rows (1000 rows) for easy data entry
+  // Pre-formatted empty workspace rows (1000 rows) with serial number & AutoFit unlocked height
   for (let i = 0; i < 1000; i++) {
-    const empty = ws.addRow(new Array(11).fill(''));
-    styleDataRow(empty, centeredCols, i + 2, 68);
+    const rowArr = new Array(13).fill('');
+    rowArr[0] = i + 3;
+    const empty = ws.addRow(rowArr);
+    styleDataRow(empty, centeredCols, i + 2);
   }
 
   // Second sheet: Core 5 Andalusian Narrators Reference
   const refSheet = wb.addWorksheet('مرجع أسماء الرواة', {
     views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],
   });
-  refSheet.columns = [
-    { header: 'الاسم الكامل', key: 'name', width: 42 },
+  const refCols = [
+    { header: 'الاسم الكامل', key: 'name', width: 44 },
     { header: 'الكنية', key: 'kunya', width: 18 },
-    { header: 'الطبقة', key: 'tabaqah', width: 18 },
-    { header: 'الحكم على الراوي', key: 'ruling', width: 52 },
+    { header: 'الطبقة', key: 'tabaqah', width: 20 },
+    { header: 'الحكم على الراوي', key: 'ruling', width: 56 },
     { header: 'سنة الوفاة', key: 'death', width: 14 },
   ];
-  styleHeaderRow(refSheet.getRow(1), '854D0E', 11);
+  refSheet.columns = refCols;
   const refCentered = new Set([3, 5]);
+  applyColumnDefaults(refSheet, refCentered);
+
+  const refWidths = refCols.map((c) => c.width);
+  const refHeaderHeight = estimateWrappedRowHeight(
+    refCols.map((c) => c.header),
+    refWidths,
+    48,
+    0.58,
+    22
+  );
+  styleHeaderRow(refSheet.getRow(1), '854D0E', 11, refHeaderHeight);
+
   const coreFive = getFiveCoreAndalusians(narrators);
   coreFive.forEach((n, idx) => {
-    const r = refSheet.addRow([
+    const rowValues = [
       n.name,
       n.kunya,
       n.tabaqah,
       n.ruling,
       n.deathYearH,
-    ]);
-    styleDataRow(r, refCentered, idx, 42);
+    ];
+    const r = refSheet.addRow(rowValues);
+    const dynamicHeight = estimateWrappedRowHeight(rowValues, refWidths, 46, 0.72, 22);
+    styleDataRow(r, refCentered, idx, dynamicHeight);
   });
 
   return wb;
@@ -702,36 +826,50 @@ export async function generateNarratorsExcelWorkbook(
     views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],
   });
 
-  ws.columns = [
-    { header: 'الاسم الكامل', key: 'name', width: 40 },
+  const narratorCols = [
+    { header: 'الاسم الكامل', key: 'name', width: 44 },
     { header: 'الكنية', key: 'kunya', width: 18 },
     { header: 'الطبقة', key: 'tabaqah', width: 20 },
-    { header: 'الحكم على الراوي (الحكم ومصدره)', key: 'ruling', width: 48 },
+    { header: 'الحكم على الراوي (الحكم ومصدره)', key: 'ruling', width: 54 },
+    { header: 'سنة الازدياد هـ', key: 'birth', width: 15 },
     { header: 'سنة الوفاة هـ', key: 'death', width: 14 },
-    { header: 'البلد / الإقليم', key: 'region', width: 24 },
-    { header: 'ملاحظات علمية', key: 'notes', width: 44 },
+    { header: 'البلد / الإقليم', key: 'region', width: 26 },
+    { header: 'ملاحظات علمية', key: 'notes', width: 48 },
   ];
+  ws.columns = narratorCols;
+  const centeredCols = new Set([3, 5, 6]);
+  applyColumnDefaults(ws, centeredCols);
 
-  styleHeaderRow(ws.getRow(1), '854D0E', 12);
+  const narratorWidths = narratorCols.map((c) => c.width);
+  const headerHeight = estimateWrappedRowHeight(
+    narratorCols.map((c) => c.header),
+    narratorWidths,
+    52,
+    0.58,
+    22
+  );
+  styleHeaderRow(ws.getRow(1), '854D0E', 12, headerHeight);
 
   const coreFive = getFiveCoreAndalusians(narrators);
-  const centeredCols = new Set([3, 5]);
   coreFive.forEach((n, i) => {
-    const r = ws.addRow([
+    const rowValues = [
       n.name,
       n.kunya,
       n.tabaqah,
       n.ruling,
+      n.birthYearH,
       n.deathYearH,
       n.region,
       n.notes,
-    ]);
-    styleDataRow(r, centeredCols, i, 58);
+    ];
+    const r = ws.addRow(rowValues);
+    const dynamicHeight = estimateWrappedRowHeight(rowValues, narratorWidths, 52, 0.72, 22);
+    styleDataRow(r, centeredCols, i, dynamicHeight);
   });
 
   for (let i = 0; i < 200; i++) {
-    const empty = ws.addRow(new Array(7).fill(''));
-    styleDataRow(empty, centeredCols, coreFive.length + i, 48);
+    const empty = ws.addRow(new Array(8).fill(''));
+    styleDataRow(empty, centeredCols, coreFive.length + i);
   }
 
   // Dropdown validation strictly for الطبقة (Col C) across core 5 + 200 blank rows; NO dropdown on الحكم على الراوي (Col D)
@@ -758,33 +896,45 @@ export async function generateNarratorsReferenceExcelWorkbook(
     views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],
   });
 
-  ws.columns = [
-    { header: 'الاسم الكامل', key: 'name', width: 42 },
+  const refCols = [
+    { header: 'الاسم الكامل', key: 'name', width: 44 },
     { header: 'الكنية', key: 'kunya', width: 18 },
     { header: 'الطبقة', key: 'tabaqah', width: 20 },
-    { header: 'الحكم على الراوي', key: 'ruling', width: 52 },
+    { header: 'الحكم على الراوي', key: 'ruling', width: 56 },
     { header: 'سنة الوفاة', key: 'death', width: 14 },
   ];
-
-  styleHeaderRow(ws.getRow(1), '14532D', 12);
-
+  ws.columns = refCols;
   const centeredCols = new Set([3, 5]);
+  applyColumnDefaults(ws, centeredCols);
+
+  const refWidths = refCols.map((c) => c.width);
+  const headerHeight = estimateWrappedRowHeight(
+    refCols.map((c) => c.header),
+    refWidths,
+    52,
+    0.58,
+    22
+  );
+  styleHeaderRow(ws.getRow(1), '14532D', 12, headerHeight);
+
   const coreFive = getFiveCoreAndalusians(narrators);
   coreFive.forEach((n, idx) => {
-    const r = ws.addRow([
+    const rowValues = [
       n.name,
       n.kunya,
       n.tabaqah,
       n.ruling,
       n.deathYearH,
-    ]);
-    styleDataRow(r, centeredCols, idx, 46);
+    ];
+    const r = ws.addRow(rowValues);
+    const dynamicHeight = estimateWrappedRowHeight(rowValues, refWidths, 48);
+    styleDataRow(r, centeredCols, idx, dynamicHeight);
   });
 
-  // Pre-formatted empty workspace rows (200 rows) for direct entry
+  // Pre-formatted empty workspace rows (200 rows) with AutoFit unlocked height
   for (let i = 0; i < 200; i++) {
     const empty = ws.addRow(new Array(5).fill(''));
-    styleDataRow(empty, centeredCols, coreFive.length + i, 44);
+    styleDataRow(empty, centeredCols, coreFive.length + i);
   }
 
   const totalRows = coreFive.length + 200 + 1;
@@ -804,6 +954,7 @@ export async function generateNarratorsReferenceExcelWorkbook(
 export function generateMuhallaJsonTemplate(): object[] {
   return [
     {
+      serialNumber: 1,
       volume: 1,
       page: '112',
       kitab: 'كتاب الطهارة',
@@ -813,6 +964,8 @@ export function generateMuhallaJsonTemplate(): object[] {
       matnWithTashkeel: 'إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى.',
       ibnHazmIsnadText:
         'حدثنا الطلمنكي، حدثنا ابن مفرج، حدثنا قاسم بن أصبغ... عن يحيى بن سعيد، عن محمد بن إبراهيم التيمي، عن علقمة بن وقاص، عن عمر بن الخطاب.',
+      takhrijSummary:
+        'أخرجه البخاري (رقم 1)، ومسلم (رقم 1907)، وأبو داود (رقم 2201)، والترمذي (رقم 1647).',
       ibnHazmHukm:
         'صحيح متصل الإسناد — ابن حزم، المحلّى بالآثار، ج 1 ص 112 (وأخرجه البخاري رقم 1 ومسلم رقم 1907).',
       chainNames: [
@@ -838,6 +991,7 @@ export function generateNarratorsJsonTemplate(): object[] {
       kunya: 'أبو القاسم',
       tabaqah: 'راو',
       ruling: 'ثقة حجة حافظ — ابن الفرضي، تاريخ علماء الأندلس ج 1 ص 134',
+      birthYearH: 295,
       deathYearH: 352,
       region: 'قرطبة - الأندلس',
       notes: 'من كبار محدثي قرطبة في القرن الرابع.',
@@ -1020,8 +1174,13 @@ export async function parseNarratorsFromFile(
               .map((s) => s.trim())
               .filter(Boolean);
 
-        const birth = Number(item.birthYearH ?? item['سنة الميلاد هـ']);
-        const death = Number(item.deathYearH ?? item['سنة الوفاة هـ']);
+        const birth = Number(
+          item.birthYearH ??
+            item['سنة الازدياد هـ'] ??
+            item['سنة الازدياد'] ??
+            item['سنة الميلاد هـ']
+        );
+        const death = Number(item.deathYearH ?? item['سنة الوفاة هـ'] ?? item['سنة الوفاة']);
         const regionStr = String(
           item.region || item['البلد / الإقليم'] || item['البلد'] || 'قرطبة - الأندلس'
         ).trim();
@@ -1076,6 +1235,13 @@ export async function parseNarratorsFromFile(
     'ruling',
   ]);
   const colRegion = findHeaderCol(headers, ['البلد', 'الاقليم', 'region']);
+  const colBirth = findHeaderCol(headers, [
+    'سنة الازدياد',
+    'الازدياد',
+    'سنة الميلاد',
+    'الميلاد',
+    'birth',
+  ]);
   const colDeath = findHeaderCol(headers, ['الوفاة', 'death']);
   const colNotes = findHeaderCol(headers, ['ملاحظات', 'notes']);
 
@@ -1093,6 +1259,7 @@ export async function parseNarratorsFromFile(
     const existing = (rawId && existingById.get(rawId)) || existingByName.get(normName);
     const id = existing?.id || rawId || slugifyNarratorId(name, idx);
 
+    const birthNum = colBirth !== -1 ? Number(r[colBirth]) : NaN;
     const deathNum = colDeath !== -1 ? Number(r[colDeath]) : NaN;
     const region =
       colRegion !== -1 && r[colRegion] ? r[colRegion].trim() : 'قرطبة - الأندلس';
@@ -1109,7 +1276,10 @@ export async function parseNarratorsFromFile(
       grade: normalizeGrade(rawRuling || 'ثقة'),
       region,
       tabaqah: rawTabaqah || 'راو',
-      birthYearH: existing?.birthYearH,
+      birthYearH:
+        Number.isFinite(birthNum) && birthNum > 0
+          ? birthNum
+          : existing?.birthYearH,
       deathYearH: Number.isFinite(deathNum) && deathNum > 0 ? deathNum : undefined,
       ibnHazmVerdict: existing?.ibnHazmVerdict || '',
       teachers: existing?.teachers || [],
@@ -1137,6 +1307,7 @@ export async function parseHadithsFromFile(
   const buildPreview = (
     raw: {
       id?: string;
+      serialNumber?: number;
       volume: number;
       page?: string;
       kitab: string;
@@ -1145,6 +1316,7 @@ export async function parseHadithsFromFile(
       fullText?: string;
       matnWithTashkeel: string;
       ibnHazmIsnadText: string;
+      takhrijSummary?: string;
       ibnHazmHukm: string;
       explicitChainText: string;
       fiqhAnalysis: string;
@@ -1204,19 +1376,23 @@ export async function parseHadithsFromFile(
 
     const hadith: MuhallaHadith = {
       id,
+      serialNumber: raw.serialNumber ?? existing?.serialNumber,
       volume: Number(raw.volume || 1),
       page: (raw.page || '').trim(),
       issueNumber: Number(raw.issueNumber || 1),
       kitab: raw.kitab || 'كتاب الطهارة',
       issueTitle,
+      fullHadithText: (raw.fullText || existing?.fullHadithText || '').trim(),
       matnWithTashkeel: effectiveMatn || issueTitle,
       ibnHazmIsnadText: raw.ibnHazmIsnadText || raw.fullText || '',
+      takhrijSummary: (raw.takhrijSummary || existing?.takhrijSummary || '').trim(),
       ibnHazmHukm: raw.ibnHazmHukm || 'صحيح متصل الإسناد',
       paths,
       takhrijLinks: existing?.takhrijLinks || [],
       gharib: parsedGharib.length > 0 ? parsedGharib : existing?.gharib || [],
       fiqhAnalysis: raw.fiqhAnalysis || '',
       otherMadhahibNotes: raw.otherMadhahibNotes || existing?.otherMadhahibNotes || '',
+      fourMadhahibFiqh: existing?.fourMadhahibFiqh,
       updatedAt: new Date().toISOString().slice(0, 10),
     };
 
@@ -1251,10 +1427,14 @@ export async function parseHadithsFromFile(
         ? chainRaw.map((x) => String(x).trim()).filter(Boolean).join(' , ')
         : String(chainRaw || '');
 
+      const serialRaw = Number(item.serialNumber ?? item['الرقم الترتيبي']);
+
       results.push(
         buildPreview(
           {
             id: item.id ? String(item.id) : undefined,
+            serialNumber:
+              Number.isFinite(serialRaw) && serialRaw > 0 ? serialRaw : undefined,
             volume: Number(item.volume ?? item['المجلد'] ?? 1) || 1,
             page: String(item.page ?? item['الصفحة'] ?? '').trim(),
             kitab: String(item.kitab || item['الكتاب'] || 'كتاب الطهارة').trim(),
@@ -1264,6 +1444,9 @@ export async function parseHadithsFromFile(
             matnWithTashkeel: matn,
             ibnHazmIsnadText: String(
               item.ibnHazmIsnadText || item['سند الحديث'] || item['نص السند'] || ''
+            ).trim(),
+            takhrijSummary: String(
+              item.takhrijSummary || item['تخريج الحديث'] || ''
             ).trim(),
             ibnHazmHukm: String(
               item.ibnHazmHukm || item['الحكم على الحديث'] || item['حكم ابن حزم'] || ''
@@ -1288,6 +1471,7 @@ export async function parseHadithsFromFile(
 
   if (rows.length < 2) return [];
   const headers = rows[0];
+  const colSerial = findHeaderCol(headers, ['الرقم الترتيبي', 'الترتيب', 'serial']);
   const colVol = findHeaderCol(headers, ['المجلد', 'الجزء', 'volume']);
   const colPage = findHeaderCol(headers, ['الصفحة', 'صفحة', 'page']);
   const colKitab = findHeaderCol(headers, ['الكتاب', 'kitab']);
@@ -1300,6 +1484,7 @@ export async function parseHadithsFromFile(
   const colTitle = findHeaderCol(headers, ['عنوان المسألة', 'العنوان', 'issueTitle']);
   const colMatn = findHeaderCol(headers, ['متن الحديث', 'المتن', 'matn']);
   const colIsnad = findHeaderCol(headers, ['سند الحديث', 'نص السند', 'السند', 'isnad']);
+  const colTakhrij = findHeaderCol(headers, ['تخريج الحديث', 'التخريج', 'takhrij']);
   const colHukm = findHeaderCol(headers, [
     'الحكم على الحديث',
     'حكم ابن حزم',
@@ -1324,12 +1509,15 @@ export async function parseHadithsFromFile(
     const title = colTitle !== -1 ? (r[colTitle] || '').trim() : '';
     if (!matn && !fullText && !title) return;
 
+    const serialNum = colSerial !== -1 ? Number(r[colSerial]) : NaN;
     const vol = colVol !== -1 ? Number(r[colVol]) || 1 : 1;
     const issueNum = colIssue !== -1 ? Number(r[colIssue]) || idx + 1 : idx + 1;
 
     results.push(
       buildPreview(
         {
+          serialNumber:
+            Number.isFinite(serialNum) && serialNum > 0 ? serialNum : undefined,
           volume: vol,
           page: colPage !== -1 ? (r[colPage] || '').trim() : '',
           kitab: colKitab !== -1 && r[colKitab] ? r[colKitab].trim() : 'كتاب الطهارة',
@@ -1338,6 +1526,7 @@ export async function parseHadithsFromFile(
           fullText,
           matnWithTashkeel: matn,
           ibnHazmIsnadText: colIsnad !== -1 ? (r[colIsnad] || '').trim() : '',
+          takhrijSummary: colTakhrij !== -1 ? (r[colTakhrij] || '').trim() : '',
           ibnHazmHukm:
             colHukm !== -1 && r[colHukm]
               ? r[colHukm].trim()
