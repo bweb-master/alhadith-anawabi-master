@@ -17,6 +17,7 @@ import {
   Narrator,
   NineBookHadith,
 } from '../types/hadith';
+import { getFontCssValue, PlatformSettings } from '../types/settings';
 import { NINE_BOOKS_META } from '../data/seedData';
 import { computeTakhrijMatch, normalizeArabic } from '../utils/arabic';
 import {
@@ -30,6 +31,7 @@ interface MuhallaArchiveViewProps {
   nineBooksCorpus: NineBookHadith[];
   selectedHadithId: string;
   isAdmin: boolean;
+  hadithTextStyle?: PlatformSettings['hadithTextStyle'];
   onSelectHadith: (id: string) => void;
   onOpenTree: (hadithId: string) => void;
   onOpenNarrator: (narratorId: string, fromHadithId?: string) => void;
@@ -45,6 +47,7 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
   nineBooksCorpus,
   selectedHadithId,
   isAdmin,
+  hadithTextStyle,
   onSelectHadith,
   onOpenTree,
   onOpenNarrator,
@@ -557,12 +560,32 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
 
         {/* Complete Hadith (Isnad with Clickable Narrators + Prophetic Matn) */}
         <div className="space-y-5 max-w-prose">
-          <div className="islamic-hero-pattern border border-[#E6E0D4] rounded-xl p-6 space-y-4">
+          <div
+            className={`${
+              hadithTextStyle?.showPattern === false ? '' : 'islamic-hero-pattern'
+            } p-6 space-y-4`}
+            style={{
+              backgroundColor: hadithTextStyle?.bgColor || '#FFFFFF',
+              borderColor: hadithTextStyle?.borderColor || '#E6E0D4',
+              borderWidth: `${hadithTextStyle?.borderWidthPx ?? 1}px`,
+              borderStyle: hadithTextStyle?.borderStyle || 'solid',
+              borderRadius: `${hadithTextStyle?.borderRadiusPx ?? 12}px`,
+            }}
+          >
             <p className="text-sm font-semibold text-[#854D0E]">
               نص الحديث كاملاً بالسند والمتن (من المحلّى)
             </p>
 
-            <div className="font-hadith text-xl lg:text-2xl leading-[2.15] font-normal text-[#1C1917]">
+            <div
+              className="leading-[2.15] font-normal"
+              style={{
+                fontFamily: hadithTextStyle
+                  ? getFontCssValue(hadithTextStyle.fontFamily)
+                  : '"Amiri", Georgia, serif',
+                fontSize: `${hadithTextStyle?.fontSizePx ?? 24}px`,
+                color: hadithTextStyle?.textColor || '#1C1917',
+              }}
+            >
               {isnadSegments.length > 0 && (
                 <span>
                   {isnadSegments.map((seg, idx) =>
@@ -576,7 +599,12 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                         type="button"
                         onClick={() => onOpenNarrator(seg.narrator.id, activeHadith.id)}
                         title={`${seg.narrator.name} — اضغط لعرض ترجمة الراوي ودراسته`}
-                        className={`inline font-hadith text-[length:inherit] leading-[inherit] font-normal underline decoration-dotted underline-offset-[6px] hover:decoration-solid rounded px-0.5 transition-colors cursor-pointer ${
+                        style={{
+                          fontFamily: 'inherit',
+                          fontSize: 'inherit',
+                          lineHeight: 'inherit',
+                        }}
+                        className={`inline font-normal underline decoration-dotted underline-offset-[6px] hover:decoration-solid rounded px-0.5 transition-colors cursor-pointer ${
                           seg.narrator.origin === 'andalusian'
                             ? 'text-[#854D0E] decoration-[#854D0E]/55 hover:bg-[#854D0E]/12'
                             : 'text-[#14532D] decoration-[#14532D]/50 hover:bg-[#14532D]/10'
@@ -589,7 +617,15 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                 </span>
               )}
               {fullHadithComposition.matnText && (
-                <span className="font-hadith text-[length:inherit] leading-[inherit] font-normal text-[#1C1917]">
+                <span
+                  style={{
+                    fontFamily: 'inherit',
+                    fontSize: 'inherit',
+                    lineHeight: 'inherit',
+                    color: 'inherit',
+                  }}
+                  className="font-normal"
+                >
                   {fullHadithComposition.matnText}
                 </span>
               )}

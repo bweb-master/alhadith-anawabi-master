@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { ChevronDown, BookOpenCheck, ArrowLeft } from 'lucide-react';
+import { ChevronDown, BookOpenCheck, ArrowLeft, Users } from 'lucide-react';
 import { CornerArabesque, IslamicDivider } from './IslamicOrnament';
 import { NavTarget } from './HomeView';
+import { PlatformSettings } from '../types/settings';
+import { SmartImage } from './SmartMedia';
 
 interface AboutPlatformViewProps {
+  settings: PlatformSettings;
   onNavigate: (target: NavTarget) => void;
 }
 
@@ -21,7 +24,7 @@ const FAQ_LIST: FaqItem[] = [
   {
     question: 'كيف أتصفح مرويات الأندلسيين وشروحها الفقهية واللغوية؟',
     answer:
-      'من قسم «مرويات الأندلسيين»، يمكنك اختيار أي مسألة من الفهرس الجانبي أو البحث باسم الكتاب الفقهي أو لفظ الحديث أو اسم الراوي، ليظهر لك المتن مشكولاً مع سند ابن حزم القابل للنقر على كل راوٍ فيه، وتحته تبويبات للتخريج من الكتب التسعة، وفقه الحديث، وغريب الألفاظ، وطرق الرواية.',
+      'من قسم «مرويات الأندلسيين»، يمكنك اختيار أي مسألة من الفهرس الجانبي أو البحث باسم الكتاب الفقهي أو لفظ الحديث أو اسم الراوي، ليظهر لك الحديث كاملاً بسنده القابل للنقر على كل راوٍ فيه ومتنه، وتحته تبويبات للتخريج من الكتب التسعة، وفقه الحديث، وغريب الألفاظ، وطرق الرواية.',
   },
   {
     question: 'كيف أستخدم محرك «تخريج الأحاديث» في الكتب التسعة؟',
@@ -36,19 +39,21 @@ const FAQ_LIST: FaqItem[] = [
   {
     question: 'كيف أقرأ «شجرة الإسناد» وما دلالة تمييز الراوي بلفظ «مدار»؟',
     answer:
-      'في قسم «شجرة الإسناد»، اختر المسألة المطلوبة لتظهر لك خريطة بصرية تجمع سلسلة إسناد ابن حزم مع طرق الكتب التسعة. وعند التقاء أكثر من طريق عند راوٍ واحد مشترك تُميزه المنصة بوصف «مدار»، مع إمكانية تكبير الشجرة وتصغيرها والنقر على أي راوٍ لمعاينة ترجمته.',
+      'في قسم «شجرة الإسناد»، اختر المسألة المطلوبة لتظهر لك خريطة بصرية تجمع سلسلة إسناد ابن حزم مع طرق الكتب التسعة. وعند التقاء أكثر من طريق عند راوٍ واحد مشترك تُميزه المنصة بوصف «مدار»، مع إمكانية تكبير الشجرة وتصغيرها وتحميلها والنقر على أي راوٍ لمعاينة ترجمته.',
   },
   {
     question: 'كيف أستفيد من قسم «دراسة الرواة» والتنقل بين الشيوخ والتلاميذ؟',
     answer:
-      'يقدّم قسم «دراسة الرواة» معجماً للرواة الأندلسيين ورواة الأسانيد؛ يمكنك تصفية القائمة (مثل: الرواة الأندلسيون أو الصحابة) أو البحث بالاسم، ثم النقر على أي شيخ أو تلميذ داخل بطاقة الراوي للانتقال مباشرة إلى ترجمته ورتبته وأقوال أئمة الجرح والتعديل وموقف ابن حزم فيه.',
+      'يقدّم قسم «دراسة الرواة» معجماً للرواة الأندلسيين ورواة الأسانيد؛ يمكنك تصفية القائمة (مثل: الرواة الأندلسيون أو الصحابة) أو البحث بالاسم، وعرض بطاقة الراوي في صفحة واحدة منسقة للطباعة أو النقر على أي شيخ أو تلميذ للانتقال مباشرة إلى ترجمته.',
   },
 ];
 
 export const AboutPlatformView: React.FC<AboutPlatformViewProps> = ({
+  settings,
   onNavigate,
 }) => {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const { about } = settings;
 
   return (
     <div className="space-y-10 max-w-5xl mx-auto">
@@ -57,29 +62,77 @@ export const AboutPlatformView: React.FC<AboutPlatformViewProps> = ({
         <CornerArabesque className="absolute -top-4 -left-4 text-[#854D0E]/10 w-28 h-28" />
 
         <div className="relative space-y-4">
-          <p className="text-sm font-semibold text-[#854D0E]">
-            حول المنصة · التعريف والأهداف ودليل الاستخدام
-          </p>
+          <p className="text-sm font-semibold text-[#854D0E]">{about.eyebrow}</p>
           <h1 className="font-hadith text-3xl sm:text-4xl font-bold text-[#1C1917]">
-            منصة مرويات ابن حزم من طريق الأندلسيين
+            {about.title}
           </h1>
           <p className="text-base sm:text-lg text-[#44403C] leading-relaxed">
-            منصة علمية رقمية أُنجزت في إطار{' '}
-            <span className="font-semibold text-[#1C1917]">
-              مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي
-            </span>
-            ، وتهدف إلى خدمة المرويات الحديثية التي أوردها الإمام ابن حزم الأندلسي من طريق شيوخه الأندلسيين في كتابه «المحلى بالآثار»، وتقديمها لطلبة العلم والباحثين في بيئة تفاعلية تجمع بين أصالة التحقيق الحديثي ودقة الأدوات الرقمية.
+            {about.description}
           </p>
 
           <div className="pt-2 border-t border-[#E6E0D4]/80 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm sm:text-base font-semibold text-[#14532D]">
-            <span>تحت إشراف الدكتور عبد الكريم خلفي</span>
+            <span>{about.supervisionText}</span>
             <span className="text-[#854D0E]/50" aria-hidden="true">·</span>
-            <span className="text-[#44403C] font-medium">
-              من إعداد الطلبة الباحثين فوج 2025-2027
-            </span>
+            <span className="text-[#44403C] font-medium">{about.batchText}</span>
           </div>
         </div>
       </section>
+
+      {/* Contributors & Research Team Portraits */}
+      {about.contributors.length > 0 && (
+        <section className="bg-white border border-[#E6E0D4] rounded-2xl p-7 sm:p-9 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="text-2xl font-bold text-[#1C1917]">
+                المشاركون وهيئة الإشراف والبحث
+              </h2>
+              <p className="text-base text-[#57534E]">
+                الأساتذة المشرفون والباحثون المساهمون في إعداد المنصة وتحقيق مادتها العلمية:
+              </p>
+            </div>
+            <Users className="w-6 h-6 text-[#854D0E]" />
+          </div>
+
+          <IslamicDivider />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {about.contributors.map((person) => {
+              const initials = (person.name || 'ب').trim().slice(0, 2);
+              return (
+                <div
+                  key={person.id}
+                  className="card-hover-lift bg-[#FBF9F5] border border-[#E6E0D4] rounded-2xl p-5 flex flex-col items-center text-center space-y-3"
+                >
+                  <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-[#14532D]/25 bg-white flex items-center justify-center shrink-0 shadow-xs">
+                    <SmartImage
+                      src={person.photoUrl}
+                      alt={person.name}
+                      className="w-full h-full object-cover"
+                      fallbackElement={
+                        <span className="font-hadith text-2xl font-bold text-[#14532D]">
+                          {initials}
+                        </span>
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-[#1C1917]">{person.name}</h3>
+                    <p className="text-xs font-semibold text-[#854D0E]">{person.title}</p>
+                    <p className="text-xs text-[#44403C] leading-relaxed pt-1">
+                      {person.role}
+                    </p>
+                    {person.bio && person.bio.trim() && (
+                      <p className="text-xs text-[#6B655E] leading-relaxed pt-1">
+                        {person.bio}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Mission & Objectives */}
       <section className="bg-white border border-[#E6E0D4] rounded-2xl p-7 sm:p-9 space-y-6">
@@ -93,45 +146,18 @@ export const AboutPlatformView: React.FC<AboutPlatformViewProps> = ({
         <IslamicDivider />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="card-hover-lift p-5 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-2">
-            <span className="font-mono text-sm font-bold text-[#854D0E]">01</span>
-            <h3 className="text-lg font-bold text-[#1C1917]">
-              العناية بالرواية الأندلسية في المحلى
-            </h3>
-            <p className="text-base text-[#44403C] leading-relaxed">
-              إبراز الخصائص الإسنادية لمدرسة الحديث بالأندلس من خلال تتبع أسانيد ابن حزم عن شيوخه القرطبيين والأندلسيين ومقارنتها بمرويات المشرق.
-            </p>
-          </div>
-
-          <div className="card-hover-lift p-5 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-2">
-            <span className="font-mono text-sm font-bold text-[#854D0E]">02</span>
-            <h3 className="text-lg font-bold text-[#1C1917]">
-              تسهيل التخريج والمقارنة النصية
-            </h3>
-            <p className="text-base text-[#44403C] leading-relaxed">
-              ربط أحاديث المحلى بمواضعها الدقيقة في الكتب التسعة مع بحث ذكي يراعي اختلافات الرسم الإملائي والتشكيل في النصوص التراثية.
-            </p>
-          </div>
-
-          <div className="card-hover-lift p-5 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-2">
-            <span className="font-mono text-sm font-bold text-[#854D0E]">03</span>
-            <h3 className="text-lg font-bold text-[#1C1917]">
-              التمثيل البصري لشجرة الإسناد
-            </h3>
-            <p className="text-base text-[#44403C] leading-relaxed">
-              تحويل السلاسل الإسنادية النصية إلى رسوم بيانية تفاعلية توضّح طرق الحديث وتكشف عن مدار الإسناد وتفردات الرواة.
-            </p>
-          </div>
-
-          <div className="card-hover-lift p-5 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-2">
-            <span className="font-mono text-sm font-bold text-[#854D0E]">04</span>
-            <h3 className="text-lg font-bold text-[#1C1917]">
-              التكامل بين السند والفقه واللغة
-            </h3>
-            <p className="text-base text-[#44403C] leading-relaxed">
-              تيسير وصول الباحث وطالب العلم إلى ترجمة الراوي، وحكم ابن حزم على السند، والاستنباط الفقهي، وشرح غريب الحديث في مكان واحد.
-            </p>
-          </div>
+          {about.objectives.map((obj, idx) => (
+            <div
+              key={`${obj.num}-${idx}`}
+              className="card-hover-lift p-5 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-2"
+            >
+              <span className="font-mono text-sm font-bold text-[#854D0E]">
+                {obj.num || `0${idx + 1}`}
+              </span>
+              <h3 className="text-lg font-bold text-[#1C1917]">{obj.title}</h3>
+              <p className="text-base text-[#44403C] leading-relaxed">{obj.body}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -194,4 +220,3 @@ export const AboutPlatformView: React.FC<AboutPlatformViewProps> = ({
     </div>
   );
 };
-

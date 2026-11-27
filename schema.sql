@@ -65,3 +65,8 @@ CREATE TABLE IF NOT EXISTS researchers (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS platform_settings (
+  id TEXT PRIMARY KEY,
+  settings_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

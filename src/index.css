@@ -6,11 +6,19 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+:root {
+  --app-font: "IBM Plex Sans Arabic", system-ui, -apple-system, sans-serif;
+  --app-bg-color: #FBF9F5;
+  --app-primary: #14532D;
+  --app-accent: #854D0E;
+  --app-btn-radius: 0.5rem;
+}
+
 @layer base {
   html {
-    font-family: var(--font-sans);
+    font-family: var(--app-font);
     font-size: 17px;
-    background-color: #FBF9F5;
+    background-color: var(--app-bg-color);
     color: #1C1917;
   }
 
@@ -24,10 +32,47 @@
   }
 }
 
-/* Very light Islamic regular 8-sided octagonal polygon pattern (مضلعات ثمانية خفيفة جداً) */
+/* Global button shape & motion customization */
+body.btn-shape-rounded button,
+body.btn-shape-rounded a.btn-hover-motion {
+  border-radius: 0.625rem;
+}
+body.btn-shape-soft button,
+body.btn-shape-soft a.btn-hover-motion {
+  border-radius: 1rem;
+}
+body.btn-shape-classic button,
+body.btn-shape-classic a.btn-hover-motion {
+  border-radius: 0.25rem;
+}
+body.btn-shape-sharp button,
+body.btn-shape-sharp a.btn-hover-motion {
+  border-radius: 0px;
+}
+
+/* Background Pattern Presets */
 .islamic-pattern-bg {
-  background-color: #FBF9F5;
+  background-color: var(--app-bg-color, #FBF9F5);
   background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23854D0E' stroke-width='0.55' stroke-opacity='0.035'%3E%3Cpolygon points='34.7,13 65.3,13 87,34.7 87,65.3 65.3,87 34.7,87 13,65.3 13,34.7'/%3E%3Cpolygon points='40.1,26 59.9,26 74,40.1 74,59.9 59.9,74 40.1,74 26,59.9 26,40.1'/%3E%3Cpolygon points='45,38 55,38 62,45 62,55 55,62 45,62 38,55 38,45'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.pattern-dots-bg {
+  background-color: var(--app-bg-color, #FBF9F5);
+  background-image: radial-gradient(rgba(133, 77, 14, 0.12) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.pattern-grid-bg {
+  background-color: var(--app-bg-color, #FBF9F5);
+  background-image:
+    linear-gradient(to right, rgba(20, 83, 45, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 83, 45, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.pattern-none-bg {
+  background-color: var(--app-bg-color, #FBF9F5);
+  background-image: none;
 }
 
 .islamic-hero-pattern {
@@ -69,6 +114,22 @@
   transform: translateY(0);
 }
 
+/* Motion intensity levels */
+body.motion-subtle .card-hover-lift:hover {
+  transform: translateY(-1.5px);
+}
+body.motion-subtle .btn-hover-motion:hover {
+  transform: translateY(-1px);
+}
+body.motion-none .card-hover-lift,
+body.motion-none .btn-hover-motion {
+  transition: none !important;
+}
+body.motion-none .card-hover-lift:hover,
+body.motion-none .btn-hover-motion:hover {
+  transform: none !important;
+}
+
 /* Custom subtle scrollbars for archival reading */
 ::-webkit-scrollbar {
   width: 7px;
@@ -86,4 +147,25 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #A8A092;
+}
+
+@media print {
+  header,
+  footer,
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  .single-page-narrator-print {
+    position: static !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }

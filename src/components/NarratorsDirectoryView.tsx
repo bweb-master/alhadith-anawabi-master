@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Pencil, UserPlus, ArrowRight } from 'lucide-react';
+import { Search, Pencil, UserPlus, ArrowRight, FileText, Printer, X } from 'lucide-react';
 import { Narrator, NarratorOrigin } from '../types/hadith';
 import { normalizeArabic } from '../utils/arabic';
 
@@ -32,6 +32,7 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [originFilter, setOriginFilter] = useState<NarratorOrigin | 'all'>('all');
+  const [showSinglePageCard, setShowSinglePageCard] = useState(false);
 
   const narratorMap = useMemo(() => {
     const map = new Map<string, Narrator>();
@@ -215,15 +216,25 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
                 </div>
               </div>
 
-              {canEdit && (
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
-                  onClick={() => onEditNarrator(activeNarrator.id)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  type="button"
+                  onClick={() => setShowSinglePageCard(true)}
+                  className="btn-hover-motion inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span>تعديل الترجمة</span>
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>بطاقة الراوي في صفحة واحدة</span>
                 </button>
-              )}
+                {canEdit && (
+                  <button
+                    onClick={() => onEditNarrator(activeNarrator.id)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>تعديل الترجمة</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Ibn Hazm's Verdict (rendered only if populated) */}
@@ -329,6 +340,151 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
           </>
         )}
       </section>
+
+      {/* Organized Single-Page Narrator Card Modal / Print View */}
+      {showSinglePageCard && activeNarrator && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="single-page-narrator-print w-full max-w-4xl bg-white border-2 border-[#14532D]/30 rounded-2xl shadow-2xl overflow-hidden my-4">
+            <div className="no-print px-6 py-3.5 bg-[#FBF9F5] border-b border-[#E6E0D4] flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm font-bold text-[#14532D]">
+                بطاقة ترجمة الراوي — عرض منظم في صفحة واحدة
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة / حفظ PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSinglePageCard(false)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#F3EFE6] hover:bg-[#E6E0D4] text-[#1C1917] rounded-lg cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>إغلاق</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-8 space-y-5 text-right">
+              <div className="border-b-2 border-[#14532D]/20 pb-4 flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-[#854D0E]">
+                    معجم تراجم رواة المحلّى بالآثار · {ORIGIN_LABELS[activeNarrator.origin]}
+                  </p>
+                  <h2 className="font-hadith text-2xl sm:text-3xl font-bold text-[#1C1917]">
+                    {activeNarrator.name}
+                  </h2>
+                </div>
+                <div className="px-3 py-1.5 bg-[#EEF6F1] border border-[#14532D]/25 rounded-lg text-xs font-bold text-[#14532D]">
+                  {activeNarrator.grade}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl p-4 text-xs">
+                <div>
+                  <span className="block text-[#6B655E]">الكنية</span>
+                  <span className="font-semibold text-[#1C1917] mt-0.5 block">
+                    {activeNarrator.kunya || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[#6B655E]">الطبقة</span>
+                  <span className="font-semibold text-[#1C1917] mt-0.5 block">
+                    {activeNarrator.tabaqah}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[#6B655E]">البلد / الإقليم</span>
+                  <span className="font-semibold text-[#1C1917] mt-0.5 block">
+                    {activeNarrator.region}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[#6B655E]">سنة الازدياد</span>
+                  <span className="font-semibold text-[#1C1917] mt-0.5 block tabular-nums">
+                    {activeNarrator.birthYearH ? `${activeNarrator.birthYearH}هـ` : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[#6B655E]">سنة الوفاة</span>
+                  <span className="font-semibold text-[#1C1917] mt-0.5 block tabular-nums">
+                    {activeNarrator.deathYearH ? `${activeNarrator.deathYearH}هـ` : '—'}
+                  </span>
+                </div>
+              </div>
+
+              {activeNarrator.ibnHazmVerdict?.trim() && (
+                <div className="p-4 bg-[#FFFBEB]/60 border border-[#854D0E]/25 rounded-xl space-y-1">
+                  <h3 className="text-xs font-bold text-[#854D0E]">
+                    موقف الإمام ابن حزم الأندلسي من الراوي
+                  </h3>
+                  <p className="text-sm text-[#1C1917] leading-relaxed">
+                    {activeNarrator.ibnHazmVerdict}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-[#14532D]">
+                  أقوال أئمة الجرح والتعديل وتوثيق الحكم
+                </h3>
+                {activeNarrator.jarhTaadil.length === 0 ? (
+                  <p className="text-xs text-[#6B655E]">لم تسجل أقوال بعد.</p>
+                ) : (
+                  <div className="border border-[#E6E0D4] rounded-xl overflow-hidden divide-y divide-[#E6E0D4]">
+                    {activeNarrator.jarhTaadil.map((jt, idx) => (
+                      <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 p-3 gap-2 text-xs">
+                        <span className="sm:col-span-3 font-bold text-[#14532D]">
+                          {jt.scholar || 'مصدر التوثيق'}
+                        </span>
+                        <span className="sm:col-span-9 text-[#1C1917] leading-relaxed">
+                          {jt.verdict}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-1.5">
+                  <h4 className="text-xs font-bold text-[#6B655E]">شيوخه (روى عن)</h4>
+                  <p className="text-xs text-[#1C1917] leading-relaxed">
+                    {activeNarrator.teachers.length === 0
+                      ? '—'
+                      : activeNarrator.teachers
+                          .map((tid) => narratorMap.get(tid)?.name.split('(')[0].trim() || tid)
+                          .join(' · ')}
+                  </p>
+                </div>
+                <div className="p-4 bg-[#FBF9F5] border border-[#E6E0D4] rounded-xl space-y-1.5">
+                  <h4 className="text-xs font-bold text-[#6B655E]">تلاميذه (روى عنه)</h4>
+                  <p className="text-xs text-[#1C1917] leading-relaxed">
+                    {activeNarrator.students.length === 0
+                      ? '—'
+                      : activeNarrator.students
+                          .map((sid) => narratorMap.get(sid)?.name.split('(')[0].trim() || sid)
+                          .join(' · ')}
+                  </p>
+                </div>
+              </div>
+
+              {activeNarrator.notes?.trim() && (
+                <div className="pt-3 border-t border-[#E6E0D4] space-y-1 text-xs">
+                  <span className="font-bold text-[#6B655E] block">ملاحظات علمية ومنهجية</span>
+                  <p className="text-sm text-[#292524] leading-relaxed">
+                    {activeNarrator.notes}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

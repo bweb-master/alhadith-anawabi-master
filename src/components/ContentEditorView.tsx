@@ -18,7 +18,11 @@ import {
   FileSpreadsheet,
   Upload,
   Wand2,
+  Palette,
+  Info,
 } from 'lucide-react';
+import { PlatformSettings } from '../types/settings';
+import { PlatformSettingsPanel } from './PlatformSettingsPanel';
 import {
   ALL_RESEARCHER_PERMISSIONS,
   AuthenticatedUser,
@@ -51,7 +55,7 @@ import {
 interface ContentEditorViewProps {
   hadiths: MuhallaHadith[];
   narrators: Narrator[];
-  initialTab: 'hadith' | 'narrator' | 'bulk' | 'users' | 'export';
+  initialTab: 'hadith' | 'narrator' | 'bulk' | 'users' | 'appearance' | 'about_settings' | 'export';
   editingHadithId: string | null;
   editingNarratorId: string | null;
   isD1Connected: boolean;
@@ -60,6 +64,8 @@ interface ContentEditorViewProps {
   currentUser: AuthenticatedUser | null;
   d1HadithCount?: number;
   researchers: ResearcherAccount[];
+  settings: PlatformSettings;
+  onSaveSettings: (next: PlatformSettings) => Promise<void>;
   onUnlockUser: (
     username: string,
     password: string
@@ -164,6 +170,8 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   currentUser,
   d1HadithCount = 0,
   researchers,
+  settings,
+  onSaveSettings,
   onUnlockUser,
   onSeedInitialD1,
   onSaveHadith,
@@ -190,7 +198,7 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   const canExportGithub = isAdmin || userPerms.includes('export_github');
 
   const [subTab, setSubTab] = useState<
-    'hadith' | 'narrator' | 'bulk' | 'users' | 'export'
+    'hadith' | 'narrator' | 'bulk' | 'users' | 'appearance' | 'about_settings' | 'export'
   >(initialTab);
   const [hadithForm, setHadithForm] = useState<MuhallaHadith>(() => {
     const found = hadiths.find((h) => h.id === editingHadithId);
@@ -224,12 +232,14 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
   const [chainTextDraft, setChainTextDraft] = useState('');
 
   const isTabAllowed = (
-    tab: 'hadith' | 'narrator' | 'bulk' | 'users' | 'export'
+    tab: 'hadith' | 'narrator' | 'bulk' | 'users' | 'appearance' | 'about_settings' | 'export'
   ): boolean => {
     if (tab === 'hadith') return canEditHadiths;
     if (tab === 'narrator') return canEditNarrators;
     if (tab === 'bulk') return isAdmin;
     if (tab === 'users') return isAdmin;
+    if (tab === 'appearance') return isAdmin;
+    if (tab === 'about_settings') return isAdmin;
     if (tab === 'export') return canExportGithub;
     return false;
   };
@@ -802,6 +812,32 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>فريق البحث والمهام</span>
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => setSubTab('appearance')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  subTab === 'appearance'
+                    ? 'bg-white text-[#14532D] shadow-xs font-semibold'
+                    : 'text-[#57534E] hover:text-[#1C1917]'
+                }`}
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span>الواجهة والمظهر والمكونات</span>
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => setSubTab('about_settings')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  subTab === 'about_settings'
+                    ? 'bg-white text-[#854D0E] shadow-xs font-semibold'
+                    : 'text-[#57534E] hover:text-[#1C1917]'
+                }`}
+              >
+                <Info className="w-3.5 h-3.5" />
+                <span>حول المنصة والمشاركون</span>
               </button>
             )}
             {canExportGithub && (
@@ -2499,6 +2535,30 @@ export const ContentEditorView: React.FC<ContentEditorViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Sub-Tab: Appearance, Home, Hadith Styling, Tree Styling & Module Controls */}
+      {isAdmin && (subTab === 'appearance' || subTab === 'about_settings') && (
+        <PlatformSettingsPanel
+          key={subTab}
+          mode={subTab}
+          settings={settings}
+          isBusy={isBusy}
+          onJumpToTab={(t) => setSubTab(t)}
+          onSaveSettings={async (next) => {
+            setIsBusy(true);
+            try {
+              await onSaveSettings(next);
+              showNotice('تم حفظ إعدادات وتنسيقات المنصة وتطبيقها بنجاح.');
+            } catch (err) {
+              showError(
+                err instanceof Error ? err.message : 'تعذر حفظ إعدادات المنصة'
+              );
+            } finally {
+              setIsBusy(false);
+            }
+          }}
+        />
       )}
 
       {/* Sub-Tab 4: Export JSON for GitHub (Admin or permitted researcher) */}

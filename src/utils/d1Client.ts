@@ -8,6 +8,7 @@ import {
   ResearcherPermission,
   ResearcherRole,
 } from '../types/hadith';
+import type { PlatformSettings } from '../types/settings';
 
 export interface D1Credentials {
   username: string;
@@ -285,5 +286,31 @@ export async function deleteD1User(
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || 'تعذر حذف الحساب');
+  }
+}
+
+export async function fetchD1Settings(): Promise<PlatformSettings | null> {
+  try {
+    const res = await fetch('/api/settings', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { settings?: PlatformSettings | null };
+    return data.settings || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveD1Settings(
+  settings: PlatformSettings,
+  creds: D1Credentials
+): Promise<void> {
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: buildAuthHeaders(creds, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ settings }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || 'تعذر حفظ إعدادات المنصة في Cloudflare D1');
   }
 }

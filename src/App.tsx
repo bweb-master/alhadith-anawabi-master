@@ -27,15 +27,26 @@ import {
   fetchD1Hadiths,
   fetchD1Narrators,
   fetchD1NineBookCounts,
+  fetchD1Settings,
   fetchD1Users,
   saveD1Hadith,
   saveD1HadithsBatch,
   saveD1Narrator,
   saveD1NarratorsBatch,
+  saveD1Settings,
   saveD1User,
   uploadD1NineBookBatch,
   verifyD1Credentials,
 } from './utils/d1Client';
+import {
+  DEFAULT_PLATFORM_SETTINGS,
+  getFontCssValue,
+  mergeWithDefaultSettings,
+  PlatformSettings,
+} from './types/settings';
+import { playClickSound } from './utils/soundEffects';
+import { resolveMediaUrl } from './utils/mediaUrl';
+import { SmartImage } from './components/SmartMedia';
 import { HomeView } from './components/HomeView';
 import { AboutPlatformView } from './components/AboutPlatformView';
 import { MuhallaArchiveView } from './components/MuhallaArchiveView';
@@ -63,7 +74,19 @@ const STORAGE_KEYS = {
   bookCounts: 'diwan_d1_book_counts_v1',
   localUsers: 'diwan_local_researchers_v1',
   localUserPwds: 'diwan_local_researcher_pwds_v1',
+  settings: 'diwan_platform_settings_v1',
 };
+
+function loadSettingsFromStorage(): PlatformSettings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.settings);
+    if (!raw) return DEFAULT_PLATFORM_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<PlatformSettings>;
+    return mergeWithDefaultSettings(parsed);
+  } catch {
+    return DEFAULT_PLATFORM_SETTINGS;
+  }
+}
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -156,6 +179,9 @@ export default function App() {
   });
   const [nineBooksCorpus, setNineBooksCorpus] =
     useState<NineBookHadith[]>(SEED_NINE_BOOKS);
+  const [settings, setSettings] = useState<PlatformSettings>(() =>
+    loadSettingsFromStorage()
+  );
 
   const [selectedHadithId, setSelectedHadithId] = useState<string>(
     hadiths[0]?.id || 'muhalla_001'
@@ -166,7 +192,13 @@ export default function App() {
   const [takhrijQuery, setTakhrijQuery] = useState<string>('');
 
   const [editorTab, setEditorTab] = useState<
-    'hadith' | 'narrator' | 'bulk' | 'users' | 'export'
+    | 'hadith'
+    | 'narrator'
+    | 'bulk'
+    | 'users'
+    | 'appearance'
+    | 'about_settings'
+    | 'export'
   >('hadith');
   const [editingHadithId, setEditingHadithId] = useState<string | null>(null);
   const [editingNarratorId, setEditingNarratorId] = useState<string | null>(null);
@@ -273,12 +305,26 @@ export default function App() {
       setD1HadithCount(health.counts?.hadiths || 0);
 
       try {
-        const [d1Hadiths, d1Narrators] = await Promise.all([
+        const [d1Hadiths, d1Narrators, d1Settings] = await Promise.all([
           fetchD1Hadiths(),
           fetchD1Narrators(),
+          fetchD1Settings(),
         ]);
 
         if (cancelled) return;
+
+        if (d1Settings) {
+          const mergedSettings = mergeWithDefaultSettings(d1Settings);
+          setSettings(mergedSettings);
+          try {
+            localStorage.setItem(
+              STORAGE_KEYS.settings,
+              JSON.stringify(mergedSettings)
+            );
+          } catch {
+            // ignore
+          }
+        }
 
         if (d1Hadiths.length > 0) {
           setHadiths(d1Hadiths);
@@ -362,6 +408,54 @@ export default function App() {
       // ignore quota errors
     }
   }, [narrators]);
+
+  useEffect(() => {
+    document.title = `${settings.home.siteTitle || 'مرويات ابن حزم'} — المنصة الحديثية`;
+    const root = document.documentElement;
+    root.style.setProperty('--app-font', getFontCssValue(settings.typography.fontFamily));
+    root.style.fontSize = `${settings.typography.baseFontSizePx || 17}px`;
+    root.style.setProperty('--app-bg-color', settings.theme.pageBgColor || '#FBF9F5');
+    root.style.setProperty('--app-primary', settings.theme.primaryColor || '#14532D');
+    root.style.setProperty('--app-accent', settings.theme.accentColor || '#854D0E');
+
+    const patternClass =
+      settings.theme.pagePattern === 'dots'
+        ? 'pattern-dots-bg'
+        : settings.theme.pagePattern === 'grid'
+          ? 'pattern-grid-bg'
+          : settings.theme.pagePattern === 'none'
+            ? 'pattern-none-bg'
+            : 'islamic-pattern-bg';
+
+    document.body.className = `${patternClass} btn-shape-${settings.theme.buttonShape} motion-${settings.theme.motionLevel} text-[#1C1917] antialiased`;
+
+    const bgImgUrl = settings.theme.pageBgImageUrl?.trim();
+    if (bgImgUrl) {
+      const resolvedBg = resolveMediaUrl(bgImgUrl, 'image').primaryUrl;
+      document.body.style.backgroundImage = `url("${resolvedBg}")`;
+      document.body.style.backgroundSize = 'cover';
+      document.body.style.backgroundAttachment = 'fixed';
+      document.body.style.backgroundPosition = 'center';
+    } else {
+      document.body.style.backgroundImage = '';
+      document.body.style.backgroundSize = '';
+      document.body.style.backgroundAttachment = '';
+      document.body.style.backgroundPosition = '';
+    }
+  }, [settings]);
+
+  useEffect(() => {
+    if (settings.theme.clickSound === 'off') return;
+    const handleDocClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('button, a, select, [role="button"]')) {
+        playClickSound(settings.theme.clickSound);
+      }
+    };
+    document.addEventListener('click', handleDocClick);
+    return () => document.removeEventListener('click', handleDocClick);
+  }, [settings.theme.clickSound]);
 
   const handleUnlockUser = async (
     usernameInput: string,
@@ -821,14 +915,40 @@ export default function App() {
     setSelectedNarratorId(SEED_NARRATORS[0].id);
   };
 
+  const handleSaveSettings = async (next: PlatformSettings): Promise<void> => {
+    const merged = mergeWithDefaultSettings(next);
+    if (isD1Connected) {
+      if (!authCreds) throw new Error('يرجى تسجيل الدخول أولاً.');
+      await saveD1Settings(merged, authCreds);
+    }
+    setSettings(merged);
+    try {
+      localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(merged));
+    } catch {
+      // ignore quota errors
+    }
+  };
+
   const navItems: { id: MainSection; label: string }[] = [
     { id: 'home', label: 'الرئيسية' },
-    { id: 'muhalla', label: 'مرويات الأندلسيين' },
-    { id: 'takhrij', label: 'تخريج الأحاديث' },
-    { id: 'tree', label: 'شجرة الإسناد' },
-    { id: 'narrators', label: 'دراسة الرواة' },
-    { id: 'fiqh', label: 'فقه الحديث' },
-    { id: 'about', label: 'حول المنصة' },
+    ...(settings.moduleControls.enableMuhalla
+      ? [{ id: 'muhalla' as MainSection, label: 'مرويات الأندلسيين' }]
+      : []),
+    ...(settings.moduleControls.enableTakhrij
+      ? [{ id: 'takhrij' as MainSection, label: 'تخريج الأحاديث' }]
+      : []),
+    ...(settings.moduleControls.enableTree
+      ? [{ id: 'tree' as MainSection, label: 'شجرة الإسناد' }]
+      : []),
+    ...(settings.moduleControls.enableNarrators
+      ? [{ id: 'narrators' as MainSection, label: 'دراسة الرواة' }]
+      : []),
+    ...(settings.moduleControls.enableFiqh
+      ? [{ id: 'fiqh' as MainSection, label: 'فقه الحديث' }]
+      : []),
+    ...(settings.moduleControls.enableAbout
+      ? [{ id: 'about' as MainSection, label: 'حول المنصة' }]
+      : []),
     ...(isLoggedIn ? [{ id: 'editor' as MainSection, label: 'الإعدادات' }] : []),
   ];
 
@@ -851,10 +971,17 @@ export default function App() {
             className="btn-hover-motion flex items-center shrink-0 cursor-pointer bg-transparent p-0"
             aria-label="الرئيسية"
           >
-            <img
-              src="/assets/aistudio/logo_65694aac.png"
-              alt="شعار المنصة"
-              className="h-14 sm:h-16 w-auto object-contain bg-transparent mix-blend-multiply select-none"
+            <SmartImage
+              src={settings.home.logoUrl || '/assets/aistudio/logo_65694aac.png'}
+              alt={settings.home.siteTitle || 'شعار المنصة'}
+              className="h-14 sm:h-16 w-auto max-w-[180px] object-contain bg-transparent mix-blend-multiply select-none"
+              fallbackElement={
+                <img
+                  src="/assets/aistudio/logo_65694aac.png"
+                  alt="شعار المنصة"
+                  className="h-14 sm:h-16 w-auto object-contain bg-transparent mix-blend-multiply select-none"
+                />
+              }
             />
           </button>
 
@@ -1034,6 +1161,8 @@ export default function App() {
             hadithsCount={hadiths.length}
             andalusiansCount={andalusianCount}
             nineBooksCount={NINE_BOOKS_META.length}
+            isLoggedIn={isLoggedIn}
+            settings={settings}
             onNavigate={(target) => {
               if (target === 'editor' && !isLoggedIn) {
                 setLoginError(null);
@@ -1053,6 +1182,7 @@ export default function App() {
             nineBooksCorpus={nineBooksCorpus}
             selectedHadithId={selectedHadithId}
             isAdmin={hasPerm('edit_muhalla_direct')}
+            hadithTextStyle={settings.hadithTextStyle}
             onSelectHadith={setSelectedHadithId}
             onOpenTree={(id) => {
               setSelectedHadithId(id);
@@ -1104,6 +1234,7 @@ export default function App() {
             hadiths={hadiths}
             narrators={narrators}
             selectedHadithId={selectedHadithId}
+            treeStyle={settings.isnadTreeStyle}
             onSelectHadith={setSelectedHadithId}
             onOpenNarratorInDirectory={(nid) => {
               setNarratorReturnTarget({
@@ -1170,7 +1301,10 @@ export default function App() {
         )}
 
         {activeSection === 'about' && (
-          <AboutPlatformView onNavigate={(target) => setActiveSection(target)} />
+          <AboutPlatformView
+            settings={settings}
+            onNavigate={(target) => setActiveSection(target)}
+          />
         )}
 
         {activeSection === 'editor' && (
@@ -1186,6 +1320,8 @@ export default function App() {
             currentUser={currentUser}
             d1HadithCount={d1HadithCount}
             researchers={researchers}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
             onUnlockUser={handleUnlockUser}
             onSeedInitialD1={handleSeedInitialD1}
             onSaveHadith={handleSaveHadith}
@@ -1206,16 +1342,19 @@ export default function App() {
       <footer className="border-t border-[#E6E0D4] bg-[#FBF9F5] py-6 mt-10">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-4 text-sm text-[#6B655E]">
           <span>
-            مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي - فوج 2025-2027
+            {settings.home.footerText ||
+              'مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي - فوج 2025-2027'}
           </span>
           <div className="flex items-center gap-5">
-            <button
-              onClick={() => setActiveSection('about')}
-              className="hover:text-[#14532D] cursor-pointer"
-            >
-              حول المنصة
-            </button>
-            {hasPerm('export_github') && (
+            {settings.moduleControls.enableAbout && (
+              <button
+                onClick={() => setActiveSection('about')}
+                className="hover:text-[#14532D] cursor-pointer"
+              >
+                حول المنصة
+              </button>
+            )}
+            {isLoggedIn && hasPerm('export_github') && (
               <>
                 <button
                   onClick={() => {
@@ -1232,7 +1371,7 @@ export default function App() {
                   rel="noreferrer"
                   className="hover:text-[#14532D]"
                 >
-                  مستودع المشروع
+                  مستودع GitHub / المشروع
                 </a>
               </>
             )}
