@@ -46,6 +46,48 @@ function truncateText(str: string, maxLen: number): string {
   return str.length > maxLen ? `${str.slice(0, maxLen - 1)}…` : str;
 }
 
+function wrapArabicLines(str: string, maxCharsPerLine: number, maxLines = 2): string[] {
+  const clean = (str || '').trim();
+  if (!clean) return [''];
+  if (clean.length <= maxCharsPerLine) return [clean];
+
+  const words = clean.split(/\s+/);
+  const lines: string[] = [];
+  let current = '';
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxCharsPerLine) {
+      current = candidate;
+    } else {
+      if (current) {
+        lines.push(current);
+        current = word;
+      } else {
+        lines.push(truncateText(word, maxCharsPerLine));
+        current = '';
+      }
+      if (lines.length >= maxLines) break;
+    }
+  }
+
+  if (current && lines.length < maxLines) {
+    lines.push(current);
+  }
+
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+  }
+
+  // If original text still had trailing words beyond maxLines, mark ellipsis cleanly
+  const joined = lines.join(' ');
+  if (joined.length < clean.length && lines.length === maxLines) {
+    lines[maxLines - 1] = truncateText(lines[maxLines - 1], maxCharsPerLine);
+  }
+
+  return lines;
+}
+
 export const IsnadTreeView: React.FC<IsnadTreeViewProps> = ({
   hadiths,
   narrators,
@@ -93,10 +135,10 @@ export const IsnadTreeView: React.FC<IsnadTreeViewProps> = ({
         nodes: [] as TreeNode[],
         edges: [] as TreeEdge[],
         nodePosMap: new Map<string, { x: number; y: number }>(),
-        width: 800,
+        width: 860,
         height: 500,
-        NODE_W: 204,
-        NODE_H: 70,
+        NODE_W: 244,
+        NODE_H: 88,
       };
     }
 
@@ -152,12 +194,12 @@ export const IsnadTreeView: React.FC<IsnadTreeViewProps> = ({
       byLevel.get(lvl)!.push(nid);
     });
 
-    const NODE_W = 204;
-    const NODE_H = 70;
-    const GAP_X = isHorizontal ? 68 : 34;
-    const GAP_Y = isHorizontal ? 28 : 64;
-    const PAD_X = 48;
-    const PAD_Y = 36;
+    const NODE_W = 244;
+    const NODE_H = 88;
+    const GAP_X = isHorizontal ? 76 : 36;
+    const GAP_Y = isHorizontal ? 30 : 68;
+    const PAD_X = 56;
+    const PAD_Y = 44;
 
     let maxInLevel = 1;
     byLevel.forEach((ids) => {
@@ -167,12 +209,12 @@ export const IsnadTreeView: React.FC<IsnadTreeViewProps> = ({
     const maxLevel = Math.max(0, ...Array.from(byLevel.keys()));
 
     const totalWidth = isHorizontal
-      ? Math.max(820, (maxLevel + 1) * NODE_W + maxLevel * GAP_X + PAD_X * 2)
-      : Math.max(760, maxInLevel * NODE_W + (maxInLevel - 1) * GAP_X + PAD_X * 2);
+      ? Math.max(860, (maxLevel + 1) * NODE_W + maxLevel * GAP_X + PAD_X * 2)
+      : Math.max(800, maxInLevel * NODE_W + (maxInLevel - 1) * GAP_X + PAD_X * 2);
 
     const totalHeight = isHorizontal
-      ? Math.max(460, maxInLevel * NODE_H + (maxInLevel - 1) * GAP_Y + PAD_Y * 2)
-      : Math.max(460, (maxLevel + 1) * NODE_H + maxLevel * GAP_Y + PAD_Y * 2);
+      ? Math.max(480, maxInLevel * NODE_H + (maxInLevel - 1) * GAP_Y + PAD_Y * 2)
+      : Math.max(480, (maxLevel + 1) * NODE_H + maxLevel * GAP_Y + PAD_Y * 2);
 
     const nodes: TreeNode[] = [];
     const nodePosMap = new Map<string, { x: number; y: number }>();
@@ -533,9 +575,22 @@ export const IsnadTreeView: React.FC<IsnadTreeViewProps> = ({
               height={graph.height * zoom}
               viewBox={`0 0 ${graph.width} ${graph.height}`}
               className="mx-auto block select-none"
-              style={{ fontFamily: '"IBM Plex Sans Arabic", sans-serif' }}
+              style={{
+                fontFamily: '"IBM Plex Sans Arabic", sans-serif',
+                maxWidth: zoom <= 1 ? '100%' : 'none',
+                height: 'auto',
+              }}
             >
               <defs>
+                <clipPath id="isnad-node-clip">
+                  <rect
+                    x={8}
+                    y={4}
+                    width={graph.NODE_W - 16}
+                    height={graph.NODE_H - 8}
+                    rx={Math.max(0, nodeRadius - 2)}
+                  />
+                </clipPath>
                 <marker
                   id="arrow-muhalla"
                   viewBox="0 0 10 10"
@@ -641,44 +696,61 @@ export const IsnadTreeView: React.FC<IsnadTreeViewProps> = ({
                       strokeWidth={isSelected ? 2.5 : 1.25}
                     />
 
-                    {/* Badge (left side in RTL) */}
-                    {badgeText && (
+                    <g clipPath="url(#isnad-node-clip)">
+                      {/* Centered Top Role Badge */}
+                      {badgeText && (
+                        <text
+                          x={NW / 2}
+                          y={19}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fontWeight={700}
+                          fill={
+                            isMadar
+                              ? treeStyle.nineBooksEdgeColor
+                              : treeStyle.muhallaEdgeColor
+                          }
+                        >
+                          {badgeText}
+                        </text>
+                      )}
+
+                      {/* Main Narrator Name (1 or 2 centered lines strictly inside rect) */}
+                      {(() => {
+                        const nameLines = wrapArabicLines(node.label, 25, 2);
+                        const startY = badgeText
+                          ? nameLines.length > 1
+                            ? 36
+                            : 44
+                          : nameLines.length > 1
+                            ? 32
+                            : 40;
+                        return nameLines.map((line, lineIdx) => (
+                          <text
+                            key={lineIdx}
+                            x={NW / 2}
+                            y={startY + lineIdx * 16}
+                            textAnchor="middle"
+                            fontSize={12.5}
+                            fontWeight={700}
+                            fill={node.isProphet ? '#FFFFFF' : '#1C1917'}
+                          >
+                            {line}
+                          </text>
+                        ));
+                      })()}
+
+                      {/* Sublabel centered at bottom */}
                       <text
-                        x={12}
-                        y={27}
-                        textAnchor="start"
-                        fontSize={10}
-                        fontWeight={600}
-                        fill={isMadar ? treeStyle.nineBooksEdgeColor : treeStyle.muhallaEdgeColor}
+                        x={NW / 2}
+                        y={NH - 12}
+                        textAnchor="middle"
+                        fontSize={10.5}
+                        fill={node.isProphet ? 'rgba(255,255,255,0.88)' : '#6B655E'}
                       >
-                        {badgeText}
+                        {truncateText(node.subLabel, 30)}
                       </text>
-                    )}
-
-                    {/* Main Narrator Name */}
-                    <text
-                      x={NW - 12}
-                      y={28}
-                      textAnchor="end"
-                      direction="rtl"
-                      fontSize={12}
-                      fontWeight={700}
-                      fill={node.isProphet ? '#FFFFFF' : '#1C1917'}
-                    >
-                      {truncateText(node.label, badgeText ? 21 : 26)}
-                    </text>
-
-                    {/* Sublabel */}
-                    <text
-                      x={NW - 12}
-                      y={49}
-                      textAnchor="end"
-                      direction="rtl"
-                      fontSize={10.5}
-                      fill={node.isProphet ? 'rgba(255,255,255,0.85)' : '#6B655E'}
-                    >
-                      {truncateText(node.subLabel, 30)}
-                    </text>
+                    </g>
                   </g>
                 );
               })}

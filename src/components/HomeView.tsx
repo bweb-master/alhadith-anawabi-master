@@ -219,13 +219,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </div>
             </div>
 
-            {/* Large Prominent Platform Logo beside Hero Title */}
+            {/* Large Prominent Platform Hero Image / Emblem beside Hero Title */}
             <div className="relative flex items-center justify-center shrink-0">
               <OctagonalHalo className="w-64 h-64 sm:w-72 sm:h-72 text-[#14532D]/10 absolute pointer-events-none" />
               <SmartImage
-                src={home.logoUrl || '/assets/aistudio/logo_65694aac.png'}
-                alt={`شعار ${home.siteTitle}`}
-                className="relative w-48 h-48 sm:w-56 sm:h-56 lg:w-72 lg:h-72 object-contain bg-transparent mix-blend-multiply select-none"
+                src={
+                  home.heroImageUrl ||
+                  home.logoUrl ||
+                  '/assets/aistudio/logo_65694aac.png'
+                }
+                alt={`صورة الواجهة — ${home.siteTitle}`}
+                className={
+                  home.heroImageFrame === 'circle'
+                    ? 'relative w-52 h-52 sm:w-64 sm:h-64 lg:w-72 lg:h-72 rounded-full object-cover border-2 border-[#E6E0D4] shadow-sm bg-white select-none'
+                    : home.heroImageFrame === 'rounded'
+                      ? 'relative w-56 h-48 sm:w-68 sm:h-56 lg:w-80 lg:h-64 rounded-2xl object-cover border border-[#E6E0D4] shadow-sm bg-white select-none'
+                      : 'relative w-48 h-48 sm:w-56 sm:h-56 lg:w-72 lg:h-72 object-contain bg-transparent mix-blend-multiply select-none'
+                }
                 fallbackElement={
                   <div className="relative w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 rounded-full border-2 border-[#14532D]/20 bg-[#FBF9F5] flex items-center justify-center font-hadith text-3xl text-[#14532D] font-bold">
                     المحلّى

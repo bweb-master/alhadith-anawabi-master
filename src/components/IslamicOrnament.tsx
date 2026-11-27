@@ -1,7 +1,7 @@
 import React from 'react';
 
 export const IslamicDivider: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <div className={`flex items-center justify-center gap-3 my-2 ${className}`} aria-hidden="true">
+  <div className={`islamic-ornament-el flex items-center justify-center gap-3 my-2 ${className}`} aria-hidden="true">
     <span className="h-px flex-1 bg-[#E6E0D4]" />
     <svg
       width="24"
@@ -33,7 +33,7 @@ export const CornerArabesque: React.FC<{ className?: string }> = ({ className = 
     viewBox="0 0 100 100"
     fill="none"
     aria-hidden="true"
-    className={`pointer-events-none select-none ${className}`}
+    className={`islamic-ornament-el pointer-events-none select-none ${className}`}
   >
     <g stroke="currentColor" strokeWidth="0.9">
       <polygon points="34.7,13 65.3,13 87,34.7 87,65.3 65.3,87 34.7,87 13,65.3 13,34.7" />
@@ -48,7 +48,7 @@ export const OctagonalHalo: React.FC<{ className?: string }> = ({ className = ''
     viewBox="0 0 100 100"
     fill="none"
     aria-hidden="true"
-    className={`pointer-events-none select-none ${className}`}
+    className={`islamic-ornament-el pointer-events-none select-none ${className}`}
   >
     <g stroke="currentColor" strokeWidth="0.55">
       <polygon points="32.4,7.5 67.6,7.5 92.5,32.4 92.5,67.6 67.6,92.5 32.4,92.5 7.5,67.6 7.5,32.4" />

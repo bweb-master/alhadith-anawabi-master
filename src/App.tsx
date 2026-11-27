@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LogIn, Lock, Settings, Unlock, X } from 'lucide-react';
 import {
   ALL_RESEARCHER_PERMISSIONS,
@@ -415,19 +415,26 @@ export default function App() {
     root.style.setProperty('--app-font', getFontCssValue(settings.typography.fontFamily));
     root.style.fontSize = `${settings.typography.baseFontSizePx || 17}px`;
     root.style.setProperty('--app-bg-color', settings.theme.pageBgColor || '#FBF9F5');
+    root.style.setProperty('--app-card-bg', settings.theme.cardBgColor || '#FFFFFF');
+    root.style.setProperty('--app-border-color', settings.theme.borderColor || '#E6E0D4');
     root.style.setProperty('--app-primary', settings.theme.primaryColor || '#14532D');
     root.style.setProperty('--app-accent', settings.theme.accentColor || '#854D0E');
 
     const patternClass =
-      settings.theme.pagePattern === 'dots'
-        ? 'pattern-dots-bg'
-        : settings.theme.pagePattern === 'grid'
-          ? 'pattern-grid-bg'
-          : settings.theme.pagePattern === 'none'
-            ? 'pattern-none-bg'
-            : 'islamic-pattern-bg';
+      settings.theme.pagePattern === 'stars'
+        ? 'pattern-stars-bg'
+        : settings.theme.pagePattern === 'mihrab'
+          ? 'pattern-mihrab-bg'
+          : settings.theme.pagePattern === 'dots'
+            ? 'pattern-dots-bg'
+            : settings.theme.pagePattern === 'grid'
+              ? 'pattern-grid-bg'
+              : settings.theme.pagePattern === 'none'
+                ? 'pattern-none-bg'
+                : 'islamic-pattern-bg';
 
-    document.body.className = `${patternClass} btn-shape-${settings.theme.buttonShape} motion-${settings.theme.motionLevel} text-[#1C1917] antialiased`;
+    const ornamentClass = settings.reading.showIslamicOrnaments ? '' : 'hide-ornaments';
+    document.body.className = `${patternClass} btn-shape-${settings.theme.buttonShape} btn-fill-${settings.theme.buttonFillStyle} icon-${settings.theme.iconStyle} motion-${settings.theme.motionLevel} ${ornamentClass} text-[#1C1917] antialiased`;
 
     const bgImgUrl = settings.theme.pageBgImageUrl?.trim();
     if (bgImgUrl) {
@@ -952,6 +959,31 @@ export default function App() {
     ...(isLoggedIn ? [{ id: 'editor' as MainSection, label: 'الإعدادات' }] : []),
   ];
 
+  const sortedHadiths = useMemo(() => {
+    const mode = settings.reading.defaultHadithSort || 'issue';
+    return [...hadiths].sort((a, b) => {
+      if (mode === 'serial') {
+        const sa = typeof a.serialNumber === 'number' ? a.serialNumber : Number.MAX_SAFE_INTEGER;
+        const sb = typeof b.serialNumber === 'number' ? b.serialNumber : Number.MAX_SAFE_INTEGER;
+        if (sa !== sb) return sa - sb;
+      }
+      if (mode === 'volume') {
+        if (a.volume !== b.volume) return a.volume - b.volume;
+        const pa = parseInt(a.page || '0', 10) || 0;
+        const pb = parseInt(b.page || '0', 10) || 0;
+        if (pa !== pb) return pa - pb;
+      }
+      return (a.issueNumber || 0) - (b.issueNumber || 0);
+    });
+  }, [hadiths, settings.reading.defaultHadithSort]);
+
+  const contentMaxWidthClass =
+    settings.reading.contentWidth === 'compact'
+      ? 'max-w-[1180px]'
+      : settings.reading.contentWidth === 'wide'
+        ? 'max-w-[1560px]'
+        : 'max-w-[1400px]';
+
   const andalusianCount = narrators.filter((n) => n.origin === 'andalusian').length;
   const userBadgeLabel =
     currentUser?.username === 'bweb'
@@ -964,7 +996,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col text-[#1C1917]">
       {/* Strict 3-Zone Top Navigation Header with Clear Animated Buttons */}
       <header className="sticky top-0 z-30 bg-[#FBF9F5]/95 backdrop-blur-xs border-b border-[#D6CEBE]">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-6">
+        <div className={`${contentMaxWidthClass} mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-6`}>
           {/* Zone 1: Transparent Platform Logo at Top-Right */}
           <button
             onClick={() => setActiveSection('home')}
@@ -1155,10 +1187,10 @@ export default function App() {
       </header>
 
       {/* Main Content Container */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-8 space-y-7">
+      <main className={`flex-1 ${contentMaxWidthClass} w-full mx-auto px-4 sm:px-6 py-8 space-y-7`}>
         {activeSection === 'home' && (
           <HomeView
-            hadithsCount={hadiths.length}
+            hadithsCount={sortedHadiths.length}
             andalusiansCount={andalusianCount}
             nineBooksCount={NINE_BOOKS_META.length}
             isLoggedIn={isLoggedIn}
@@ -1177,7 +1209,7 @@ export default function App() {
 
         {activeSection === 'muhalla' && (
           <MuhallaArchiveView
-            hadiths={hadiths}
+            hadiths={sortedHadiths}
             narrators={narrators}
             nineBooksCorpus={nineBooksCorpus}
             selectedHadithId={selectedHadithId}
@@ -1215,7 +1247,7 @@ export default function App() {
 
         {activeSection === 'takhrij' && (
           <TakhrijEngineView
-            muhallaHadiths={hadiths}
+            muhallaHadiths={sortedHadiths}
             nineBooksCorpus={nineBooksCorpus}
             initialQuery={takhrijQuery}
             isD1Connected={isD1Connected}
@@ -1231,7 +1263,7 @@ export default function App() {
 
         {activeSection === 'tree' && (
           <IsnadTreeView
-            hadiths={hadiths}
+            hadiths={sortedHadiths}
             narrators={narrators}
             selectedHadithId={selectedHadithId}
             treeStyle={settings.isnadTreeStyle}
@@ -1253,6 +1285,7 @@ export default function App() {
             narrators={narrators}
             selectedNarratorId={selectedNarratorId}
             canEdit={hasPerm('edit_narrators')}
+            allowPrint={isLoggedIn || settings.reading.enableGuestPrint}
             returnToHadith={
               narratorReturnTarget
                 ? {
@@ -1340,7 +1373,7 @@ export default function App() {
 
       {/* Quiet Academic Footer */}
       <footer className="border-t border-[#E6E0D4] bg-[#FBF9F5] py-6 mt-10">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-4 text-sm text-[#6B655E]">
+        <div className={`${contentMaxWidthClass} mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-4 text-sm text-[#6B655E]`}>
           <span>
             {settings.home.footerText ||
               'مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي - فوج 2025-2027'}

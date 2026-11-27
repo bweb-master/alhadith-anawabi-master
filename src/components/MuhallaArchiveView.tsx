@@ -559,11 +559,11 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
         </div>
 
         {/* Complete Hadith (Isnad with Clickable Narrators + Prophetic Matn) */}
-        <div className="space-y-5 max-w-prose">
+        <div className="space-y-5 w-full">
           <div
-            className={`${
+            className={`w-full ${
               hadithTextStyle?.showPattern === false ? '' : 'islamic-hero-pattern'
-            } p-6 space-y-4`}
+            } p-6 sm:p-7 space-y-4`}
             style={{
               backgroundColor: hadithTextStyle?.bgColor || '#FFFFFF',
               borderColor: hadithTextStyle?.borderColor || '#E6E0D4',
@@ -948,7 +948,7 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
 
             {activeDetailTab === 'fiqh' && (
               <div className="space-y-5">
-                <div className="space-y-2 max-w-prose">
+                <div className="space-y-2 w-full">
                   <h4 className="text-sm font-semibold text-[#1C1917]">
                     استنباط ابن حزم الأندلسي ومنهجه الفقهي في المسألة
                   </h4>
@@ -1001,7 +1001,7 @@ export const MuhallaArchiveView: React.FC<MuhallaArchiveViewProps> = ({
                   )}
 
                 {activeHadith.otherMadhahibNotes && (
-                  <div className="pt-4 border-t border-[#E6E0D4] space-y-1.5 max-w-prose">
+                  <div className="pt-4 border-t border-[#E6E0D4] space-y-1.5 w-full">
                     <h4 className="text-sm font-semibold text-[#1C1917]">
                       خلاصة المقارنة الفقهية
                     </h4>

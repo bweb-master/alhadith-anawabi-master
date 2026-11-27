@@ -6,9 +6,17 @@ export type ArabicUiFontKey =
   | 'Scheherazade New';
 
 export type ButtonShapeStyle = 'rounded' | 'soft' | 'classic' | 'sharp';
+export type ButtonFillStyle = 'solid' | 'bordered' | 'gradient';
+export type IconStyle = 'default' | 'thin' | 'bold' | 'framed';
 export type MotionLevel = 'smooth' | 'subtle' | 'none';
 export type ClickSoundType = 'off' | 'soft' | 'wood' | 'chime';
-export type PagePatternType = 'octagonal' | 'dots' | 'grid' | 'none';
+export type PagePatternType =
+  | 'octagonal'
+  | 'stars'
+  | 'mihrab'
+  | 'dots'
+  | 'grid'
+  | 'none';
 
 export interface HeroMediaItem {
   id: string;
@@ -20,8 +28,8 @@ export interface HeroMediaItem {
 export interface PlatformContributor {
   id: string;
   name: string;
-  title: string; // الصفة العلمية/الأكاديمية (مثل: المشرف الأكاديمي / طالب باحث)
-  role: string;  // الدور في المشروع (مثل: الإشراف والتوجيه / تحقيق المرويات)
+  title: string;
+  role: string;
   photoUrl: string;
   bio?: string;
 }
@@ -40,6 +48,8 @@ export interface PlatformSettings {
     supervisionText: string;
     batchText: string;
     logoUrl: string;
+    heroImageUrl: string;
+    heroImageFrame: 'logo' | 'rounded' | 'circle';
     footerText: string;
     heroMedia: HeroMediaItem[];
   };
@@ -59,12 +69,17 @@ export interface PlatformSettings {
     showPattern: boolean;
   };
   theme: {
+    activePresetId?: string;
     pageBgColor: string;
+    cardBgColor: string;
+    borderColor: string;
     pagePattern: PagePatternType;
     pageBgImageUrl: string;
     primaryColor: string;
     accentColor: string;
     buttonShape: ButtonShapeStyle;
+    buttonFillStyle: ButtonFillStyle;
+    iconStyle: IconStyle;
     motionLevel: MotionLevel;
     clickSound: ClickSoundType;
   };
@@ -79,6 +94,12 @@ export interface PlatformSettings {
     muhallaEdgeColor: string;
     nineBooksEdgeColor: string;
     enableDownload: boolean;
+  };
+  reading: {
+    contentWidth: 'compact' | 'normal' | 'wide';
+    showIslamicOrnaments: boolean;
+    enableGuestPrint: boolean;
+    defaultHadithSort: 'issue' | 'serial' | 'volume';
   };
   about: {
     eyebrow: string;
@@ -138,6 +159,151 @@ export function getFontCssValue(fontKey: ArabicUiFontKey): string {
   );
 }
 
+export interface IslamicThemePreset {
+  id: string;
+  name: string;
+  subtitle: string;
+  pageBgColor: string;
+  cardBgColor: string;
+  borderColor: string;
+  primaryColor: string;
+  accentColor: string;
+  pagePattern: PagePatternType;
+  buttonShape: ButtonShapeStyle;
+  buttonFillStyle: ButtonFillStyle;
+  iconStyle: IconStyle;
+  hadithBoxBg: string;
+  hadithBoxBorder: string;
+  hadithBorderStyle: 'solid' | 'double' | 'dashed';
+}
+
+export const ISLAMIC_THEME_PRESETS: IslamicThemePreset[] = [
+  {
+    id: 'cordoba_heritage',
+    name: 'قرطبة التراثي (الافتراضي)',
+    subtitle: 'عاجي هادئ مع أخضر أندلسي وذهبي عتيق وزخرفة ثمانية',
+    pageBgColor: '#FBF9F5',
+    cardBgColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
+    primaryColor: '#14532D',
+    accentColor: '#854D0E',
+    pagePattern: 'octagonal',
+    buttonShape: 'rounded',
+    buttonFillStyle: 'solid',
+    iconStyle: 'default',
+    hadithBoxBg: '#FFFFFF',
+    hadithBoxBorder: '#E6E0D4',
+    hadithBorderStyle: 'solid',
+  },
+  {
+    id: 'andalusian_manuscript',
+    name: 'المخطوط الأندلسي',
+    subtitle: 'ورق رقّ عتيق وإطار مزدوج مذهب لصفحات المرويات',
+    pageBgColor: '#F6F0E4',
+    cardBgColor: '#FCF9F2',
+    borderColor: '#DFCFAF',
+    primaryColor: '#1B4332',
+    accentColor: '#9A6B16',
+    pagePattern: 'stars',
+    buttonShape: 'classic',
+    buttonFillStyle: 'bordered',
+    iconStyle: 'thin',
+    hadithBoxBg: '#FFFDF7',
+    hadithBoxBorder: '#D4B982',
+    hadithBorderStyle: 'double',
+  },
+  {
+    id: 'prophetic_emerald',
+    name: 'الزمرد النبوي',
+    subtitle: 'صفاء أخضر هادئ مريح للعين في القراءة المطوّلة',
+    pageBgColor: '#F4F8F5',
+    cardBgColor: '#FFFFFF',
+    borderColor: '#CFE2D5',
+    primaryColor: '#0F5132',
+    accentColor: '#8C6239',
+    pagePattern: 'mihrab',
+    buttonShape: 'soft',
+    buttonFillStyle: 'gradient',
+    iconStyle: 'framed',
+    hadithBoxBg: '#FAFDFB',
+    hadithBoxBorder: '#B7D4C0',
+    hadithBorderStyle: 'solid',
+  },
+  {
+    id: 'qayrawan_lapis',
+    name: 'القيروان الأزرق',
+    subtitle: 'زرقة حجرية وقورة مستوحاة من الزليج المغربي الأندلسي',
+    pageBgColor: '#F4F6FA',
+    cardBgColor: '#FFFFFF',
+    borderColor: '#D4DCE8',
+    primaryColor: '#1E3A5F',
+    accentColor: '#9A6E2B',
+    pagePattern: 'stars',
+    buttonShape: 'rounded',
+    buttonFillStyle: 'solid',
+    iconStyle: 'default',
+    hadithBoxBg: '#FFFFFF',
+    hadithBoxBorder: '#CBD5E1',
+    hadithBorderStyle: 'solid',
+  },
+  {
+    id: 'rawdah_olive',
+    name: 'روضة المحلّى',
+    subtitle: 'درجات الزيتوني الهادئ والبيج التراثي بلمسة بسيطة',
+    pageBgColor: '#F8F5EE',
+    cardBgColor: '#FFFDF9',
+    borderColor: '#E1D6C1',
+    primaryColor: '#2D4A2B',
+    accentColor: '#A16207',
+    pagePattern: 'octagonal',
+    buttonShape: 'soft',
+    buttonFillStyle: 'solid',
+    iconStyle: 'bold',
+    hadithBoxBg: '#FFFDF8',
+    hadithBoxBorder: '#D8C7A6',
+    hadithBorderStyle: 'double',
+  },
+  {
+    id: 'dawn_minimal',
+    name: 'نور الفجر (بسيط ونقي)',
+    subtitle: 'خلفية ناصعة نقية بأعلى درجات البساطة والوضوح',
+    pageBgColor: '#FAFAFA',
+    cardBgColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    primaryColor: '#14532D',
+    accentColor: '#78350F',
+    pagePattern: 'dots',
+    buttonShape: 'rounded',
+    buttonFillStyle: 'solid',
+    iconStyle: 'thin',
+    hadithBoxBg: '#FFFFFF',
+    hadithBoxBorder: '#E5E7EB',
+    hadithBorderStyle: 'solid',
+  },
+];
+
+export const BACKGROUND_PATTERN_CARDS: {
+  key: PagePatternType;
+  title: string;
+  desc: string;
+}[] = [
+  { key: 'octagonal', title: 'مثمّن أندلسي', desc: 'زخرفة هندسية ثمانية هادئة' },
+  { key: 'stars', title: 'نجوم الزليج', desc: 'تقاطعات نجمية إسلامية خفيفة' },
+  { key: 'mihrab', title: 'أقواس محرابية', desc: 'قناطر تراثية رقيقة جداً' },
+  { key: 'dots', title: 'نقاط لطيفة', desc: 'خلفية منقطة ناعمة وبسيطة' },
+  { key: 'grid', title: 'تخطيط دفتري', desc: 'شبكة بحثية دقيقة' },
+  { key: 'none', title: 'صفاء سادة', desc: 'لون موحّد بدون زخرفة' },
+];
+
+export const BACKGROUND_COLOR_SWATCHES: { color: string; label: string }[] = [
+  { color: '#FBF9F5', label: 'ورق عاجي (الافتراضي)' },
+  { color: '#F6F0E4', label: 'رقّ مخطوط دافئ' },
+  { color: '#F4F8F5', label: 'نسيم زمردي' },
+  { color: '#F4F6FA', label: 'سماوي حجري' },
+  { color: '#F8F5EE', label: 'رملي أندلسي' },
+  { color: '#FFFFFF', label: 'أبيض ناصع' },
+];
+
 export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   home: {
     siteTitle: 'مرويات ابن حزم من طريق الأندلسيين',
@@ -147,6 +313,8 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
     supervisionText: 'تحت إشراف الدكتور عبد الكريم خلفي',
     batchText: 'من إعداد الطلبة الباحثين فوج 2025-2027',
     logoUrl: '/assets/aistudio/logo_65694aac.png',
+    heroImageUrl: '/assets/aistudio/logo_65694aac.png',
+    heroImageFrame: 'logo',
     footerText: 'مشروع بحث التخرج في ماستر الشريعة والابتكار الرقمي - فوج 2025-2027',
     heroMedia: [],
   },
@@ -166,12 +334,17 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
     showPattern: true,
   },
   theme: {
+    activePresetId: 'cordoba_heritage',
     pageBgColor: '#FBF9F5',
+    cardBgColor: '#FFFFFF',
+    borderColor: '#E6E0D4',
     pagePattern: 'octagonal',
     pageBgImageUrl: '',
     primaryColor: '#14532D',
     accentColor: '#854D0E',
     buttonShape: 'rounded',
+    buttonFillStyle: 'solid',
+    iconStyle: 'default',
     motionLevel: 'smooth',
     clickSound: 'off',
   },
@@ -186,6 +359,12 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
     muhallaEdgeColor: '#854D0E',
     nineBooksEdgeColor: '#14532D',
     enableDownload: true,
+  },
+  reading: {
+    contentWidth: 'normal',
+    showIslamicOrnaments: true,
+    enableGuestPrint: true,
+    defaultHadithSort: 'issue',
   },
   about: {
     eyebrow: 'حول المنصة · التعريف والأهداف ودليل الاستخدام',
@@ -267,6 +446,10 @@ export function mergeWithDefaultSettings(
     isnadTreeStyle: {
       ...DEFAULT_PLATFORM_SETTINGS.isnadTreeStyle,
       ...(partial.isnadTreeStyle || {}),
+    },
+    reading: {
+      ...DEFAULT_PLATFORM_SETTINGS.reading,
+      ...(partial.reading || {}),
     },
     about: {
       ...DEFAULT_PLATFORM_SETTINGS.about,

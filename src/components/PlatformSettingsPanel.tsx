@@ -15,16 +15,24 @@ import {
   BookOpen,
   FileSpreadsheet,
   Download,
+  Sparkles,
+  Check,
+  Sliders,
 } from 'lucide-react';
 import {
   ARABIC_FONT_OPTIONS,
   ArabicUiFontKey,
+  BACKGROUND_COLOR_SWATCHES,
+  BACKGROUND_PATTERN_CARDS,
+  ButtonFillStyle,
   ButtonShapeStyle,
   ClickSoundType,
   DEFAULT_PLATFORM_SETTINGS,
   getFontCssValue,
+  IconStyle,
+  ISLAMIC_THEME_PRESETS,
+  IslamicThemePreset,
   MotionLevel,
-  PagePatternType,
   PlatformSettings,
 } from '../types/settings';
 import { SmartImage, SmartMediaViewer } from './SmartMedia';
@@ -59,6 +67,38 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     await onSaveSettings(draft);
+  };
+
+  const applyThemePreset = (preset: IslamicThemePreset) => {
+    setDraft((prev) => ({
+      ...prev,
+      theme: {
+        ...prev.theme,
+        activePresetId: preset.id,
+        pageBgColor: preset.pageBgColor,
+        cardBgColor: preset.cardBgColor,
+        borderColor: preset.borderColor,
+        primaryColor: preset.primaryColor,
+        accentColor: preset.accentColor,
+        pagePattern: preset.pagePattern,
+        buttonShape: preset.buttonShape,
+        buttonFillStyle: preset.buttonFillStyle,
+        iconStyle: preset.iconStyle,
+      },
+      hadithTextStyle: {
+        ...prev.hadithTextStyle,
+        bgColor: preset.hadithBoxBg,
+        borderColor: preset.hadithBoxBorder,
+        borderStyle: preset.hadithBorderStyle,
+      },
+      isnadTreeStyle: {
+        ...prev.isnadTreeStyle,
+        canvasBgColor: preset.pageBgColor,
+        frameColor: preset.borderColor,
+        muhallaEdgeColor: preset.accentColor,
+        nineBooksEdgeColor: preset.primaryColor,
+      },
+    }));
   };
 
   const handleAddMedia = () => {
@@ -449,6 +489,77 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
         </div>
       </div>
 
+      {/* 0. Curated Islamic Scholarly Themes */}
+      <section className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-[#854D0E]" />
+            <div>
+              <h4 className="text-base font-bold text-[#1C1917]">
+                ثيمات المنصة الإسلامية (Themes)
+              </h4>
+              <p className="text-xs text-[#6B655E]">
+                اختر ثيماً إسلامياً متكاملاً يجمع بين البساطة والهدوء البصري والخطوط التراثية، ثم اضغط «حفظ إعدادات المنصة».
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {ISLAMIC_THEME_PRESETS.map((preset) => {
+            const isSelected = draft.theme.activePresetId === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => applyThemePreset(preset)}
+                className={`text-right p-4 rounded-xl border transition-all cursor-pointer space-y-3 ${
+                  isSelected
+                    ? 'border-[#14532D] bg-[#EEF6F1] ring-1 ring-[#14532D]/30'
+                    : 'border-[#E6E0D4] bg-[#FBF9F5] hover:border-[#854D0E]/60'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-[#1C1917]">{preset.name}</span>
+                  {isSelected && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#14532D]">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>مختار</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Palette Preview Strip */}
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-6 h-6 rounded-full border border-black/10"
+                    style={{ backgroundColor: preset.pageBgColor }}
+                    title="لون الخلفية"
+                  />
+                  <span
+                    className="w-6 h-6 rounded-full border border-black/10"
+                    style={{ backgroundColor: preset.cardBgColor }}
+                    title="لون البطاقات"
+                  />
+                  <span
+                    className="w-6 h-6 rounded-full border border-black/10"
+                    style={{ backgroundColor: preset.primaryColor }}
+                    title="اللون الرئيسي"
+                  />
+                  <span
+                    className="w-6 h-6 rounded-full border border-black/10"
+                    style={{ backgroundColor: preset.accentColor }}
+                    title="اللون الزخرفي"
+                  />
+                </div>
+
+                <p className="text-xs text-[#57534E] leading-relaxed">{preset.subtitle}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* 1. Module Control Cards & Quick Action Buttons */}
       <section className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-5">
         <div className="flex items-center gap-2">
@@ -545,12 +656,12 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
         </div>
       </section>
 
-      {/* 2. Home Identity, Logo, Title & Media Links */}
+      {/* 2. Home Identity, Logo, Hero Image & Media Links */}
       <section className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-5">
         <div className="flex items-center gap-2">
           <ImageIcon className="w-5 h-5 text-[#854D0E]" />
           <h4 className="text-base font-bold text-[#1C1917]">
-            الصفحة الرئيسية: الشعار والعنوان وروابط صور ووسائط الواجهة
+            الصفحة الرئيسية: الشعار، صورة الواجهة، العنوان وروابط الوسائط
           </h4>
         </div>
 
@@ -566,9 +677,10 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
               className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
             />
           </label>
+
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">
-              رابط الشعار (يدعم Google Drive والروابط المباشرة)
+              رابط الشعار في الشريط العلوي (Google Drive أو رابط مباشر)
             </span>
             <div className="flex items-center gap-2">
               <input
@@ -590,6 +702,59 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
               </div>
             </div>
           </label>
+
+          {/* Dedicated Hero Image URL for Home Page */}
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">
+              رابط الصورة الرئيسية بالصفحة الرئيسية (تظهر بجانب العنوان)
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                dir="ltr"
+                value={draft.home.heroImageUrl}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    home: { ...draft.home, heroImageUrl: e.target.value },
+                  })
+                }
+                placeholder="https://drive.google.com/file/d/... أو مسار مباشر"
+                className="w-full px-3 py-2 text-xs bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left font-mono"
+              />
+              <div className="w-12 h-12 rounded-lg border border-[#E6E0D4] bg-[#FBF9F5] flex items-center justify-center shrink-0 overflow-hidden">
+                <SmartImage
+                  src={draft.home.heroImageUrl || draft.home.logoUrl}
+                  alt="معاينة صورة الواجهة"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
+          </label>
+
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">
+              إطار وشكل الصورة الرئيسية بالصفحة الرئيسية
+            </span>
+            <select
+              value={draft.home.heroImageFrame}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  home: {
+                    ...draft.home,
+                    heroImageFrame: e.target.value as 'logo' | 'rounded' | 'circle',
+                  },
+                })
+              }
+              className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
+            >
+              <option value="logo">شعار شفاف متداخل مع الخلفية</option>
+              <option value="rounded">صورة بإطار مستطيل ناعم (مناسب للصور والمخطوطات)</option>
+              <option value="circle">صورة بإطار دائري أنيق</option>
+            </select>
+          </label>
+
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">العبارة التمهيدية فوق العنوان</span>
             <input
@@ -601,6 +766,7 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
               className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
             />
           </label>
+
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">الإشراف الأكاديمي</span>
             <input
@@ -615,6 +781,7 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
               className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
             />
           </label>
+
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">الفوج البحثي</span>
             <input
@@ -626,6 +793,7 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
               className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
             />
           </label>
+
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">عبارة تذييل الصفحة (الأسفل)</span>
             <input
@@ -659,7 +827,7 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
           <div className="flex items-center gap-2">
             <Youtube className="w-4 h-4 text-[#854D0E]" />
             <span className="text-xs font-bold text-[#1C1917]">
-              روابط صور وفيديوهات الواجهة (تقبل يوتيوب، Google Drive، والروابط المباشرة)
+              معرض صور وفيديوهات الواجهة الإضافية (يوتيوب، Google Drive، والروابط المباشرة)
             </span>
           </div>
 
@@ -750,16 +918,437 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
         </div>
       </section>
 
-      {/* 3. Global Fonts, Background, Button Shapes, Motion & Click Sounds */}
+      {/* 3. Background Pattern Cards & Page Surface Customization */}
       <section className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-5">
         <div className="flex items-center gap-2">
           <Palette className="w-5 h-5 text-[#14532D]" />
-          <h4 className="text-base font-bold text-[#1C1917]">
-            الخطوط والخلفية وشكل الأزرار والحركة وأصوات النقر
-          </h4>
+          <div>
+            <h4 className="text-base font-bold text-[#1C1917]">
+              بطاقات تعديل الخلفيات والزخارف الإسلامية
+            </h4>
+            <p className="text-xs text-[#6B655E]">
+              نقوش إسلامية هادئة تحافظ على صفاء الصفحة وبساطتها وراحة العين أثناء القراءة.
+            </p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Pattern Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {BACKGROUND_PATTERN_CARDS.map((pat) => {
+            const active = draft.theme.pagePattern === pat.key;
+            const previewClass =
+              pat.key === 'stars'
+                ? 'pattern-stars-bg'
+                : pat.key === 'mihrab'
+                  ? 'pattern-mihrab-bg'
+                  : pat.key === 'dots'
+                    ? 'pattern-dots-bg'
+                    : pat.key === 'grid'
+                      ? 'pattern-grid-bg'
+                      : pat.key === 'none'
+                        ? 'pattern-none-bg'
+                        : 'islamic-pattern-bg';
+            return (
+              <button
+                key={pat.key}
+                type="button"
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, pagePattern: pat.key },
+                  })
+                }
+                className={`text-right p-2.5 rounded-xl border transition-all cursor-pointer space-y-2 ${
+                  active
+                    ? 'border-[#14532D] bg-[#EEF6F1] ring-1 ring-[#14532D]/30'
+                    : 'border-[#E6E0D4] bg-[#FBF9F5] hover:border-[#854D0E]/50'
+                }`}
+              >
+                <div
+                  className={`h-14 w-full rounded-lg border border-[#E6E0D4] ${previewClass}`}
+                  style={{ backgroundColor: draft.theme.pageBgColor }}
+                />
+                <div>
+                  <p className="text-xs font-bold text-[#1C1917]">{pat.title}</p>
+                  <p className="text-[11px] text-[#6B655E] leading-snug">{pat.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Background Color Swatch Cards */}
+        <div className="space-y-2 pt-2">
+          <span className="text-xs font-semibold text-[#44403C] block">
+            درجات ألوان الخلفية التراثية المريحة
+          </span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {BACKGROUND_COLOR_SWATCHES.map((sw) => {
+              const active =
+                draft.theme.pageBgColor.toLowerCase() === sw.color.toLowerCase();
+              return (
+                <button
+                  key={sw.color}
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      theme: { ...draft.theme, pageBgColor: sw.color },
+                    })
+                  }
+                  className={`flex items-center gap-2 p-2.5 rounded-lg border text-right cursor-pointer transition-colors ${
+                    active
+                      ? 'border-[#14532D] bg-[#EEF6F1]'
+                      : 'border-[#E6E0D4] bg-white hover:bg-[#FBF9F5]'
+                  }`}
+                >
+                  <span
+                    className="w-5 h-5 rounded-full border border-[#D6CEBE] shrink-0"
+                    style={{ backgroundColor: sw.color }}
+                  />
+                  <span className="text-[11px] font-medium text-[#1C1917] truncate">
+                    {sw.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">لون خلفية مخصص</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={draft.theme.pageBgColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, pageBgColor: e.target.value },
+                  })
+                }
+                className="w-10 h-9 rounded border border-[#E6E0D4] cursor-pointer"
+              />
+              <input
+                type="text"
+                dir="ltr"
+                value={draft.theme.pageBgColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, pageBgColor: e.target.value },
+                  })
+                }
+                className="w-full px-3 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
+              />
+            </div>
+          </label>
+
+          <label className="space-y-1.5 block md:col-span-2">
+            <span className="text-xs font-medium text-[#44403C]">
+              رابط صورة خلفية مخصصة (اختياري — Google Drive أو رابط مباشر)
+            </span>
+            <input
+              type="url"
+              dir="ltr"
+              value={draft.theme.pageBgImageUrl}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  theme: { ...draft.theme, pageBgImageUrl: e.target.value },
+                })
+              }
+              placeholder="اتركه فارغاً لاستخدام الخلفية التراثية الافتراضية"
+              className="w-full px-3 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
+            />
+          </label>
+        </div>
+      </section>
+
+      {/* 4. Buttons, Icons, Colors, Typography, Motion & Click Sounds */}
+      <section className="bg-white border border-[#E6E0D4] rounded-xl p-6 space-y-6">
+        <div className="flex items-center gap-2">
+          <Sliders className="w-5 h-5 text-[#854D0E]" />
+          <div>
+            <h4 className="text-base font-bold text-[#1C1917]">
+              أزرار وبطاقات التعديل على الأزرار والأيقونات والألوان والخطوط
+            </h4>
+            <p className="text-xs text-[#6B655E]">
+              تعديل فوري لألوان الهوية الإسلامية، أشكال الأزرار، نمط الأيقونات، والخط العربي الأساسي.
+            </p>
+          </div>
+        </div>
+
+        {/* Brand & Surface Color Pickers */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">
+              اللون الرئيسي (الأزرار والعناوين)
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={draft.theme.primaryColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, primaryColor: e.target.value },
+                  })
+                }
+                className="w-10 h-9 rounded border border-[#E6E0D4] cursor-pointer"
+              />
+              <input
+                type="text"
+                dir="ltr"
+                value={draft.theme.primaryColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, primaryColor: e.target.value },
+                  })
+                }
+                className="w-full px-2.5 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
+              />
+            </div>
+          </label>
+
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">
+              اللون الزخرفي الثاني (الذهبي/التراثي)
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={draft.theme.accentColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, accentColor: e.target.value },
+                  })
+                }
+                className="w-10 h-9 rounded border border-[#E6E0D4] cursor-pointer"
+              />
+              <input
+                type="text"
+                dir="ltr"
+                value={draft.theme.accentColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, accentColor: e.target.value },
+                  })
+                }
+                className="w-full px-2.5 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
+              />
+            </div>
+          </label>
+
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">لون خلفية البطاقات</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={draft.theme.cardBgColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, cardBgColor: e.target.value },
+                  })
+                }
+                className="w-10 h-9 rounded border border-[#E6E0D4] cursor-pointer"
+              />
+              <input
+                type="text"
+                dir="ltr"
+                value={draft.theme.cardBgColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, cardBgColor: e.target.value },
+                  })
+                }
+                className="w-full px-2.5 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
+              />
+            </div>
+          </label>
+
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">لون الإطارات والفواصل</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={draft.theme.borderColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, borderColor: e.target.value },
+                  })
+                }
+                className="w-10 h-9 rounded border border-[#E6E0D4] cursor-pointer"
+              />
+              <input
+                type="text"
+                dir="ltr"
+                value={draft.theme.borderColor}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: { ...draft.theme, borderColor: e.target.value },
+                  })
+                }
+                className="w-full px-2.5 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
+              />
+            </div>
+          </label>
+        </div>
+
+        {/* Button Shape & Fill Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pt-2 border-t border-[#E6E0D4]">
+          <div className="space-y-2.5">
+            <span className="text-xs font-bold text-[#1C1917] block">
+              بطاقات شكل الأزرار
+            </span>
+            <div className="grid grid-cols-2 gap-2.5">
+              {(
+                [
+                  ['rounded', 'متوازن (Rounded)', '10px'],
+                  ['soft', 'مستدير ناعم (Soft)', '16px'],
+                  ['classic', 'كلاسيكي (Classic)', '4px'],
+                  ['sharp', 'حواف قائمة (Sharp)', '0px'],
+                ] as [ButtonShapeStyle, string, string][]
+              ).map(([shapeKey, label, radius]) => {
+                const active = draft.theme.buttonShape === shapeKey;
+                return (
+                  <button
+                    key={shapeKey}
+                    type="button"
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        theme: { ...draft.theme, buttonShape: shapeKey },
+                      })
+                    }
+                    className={`p-3 rounded-xl border text-right cursor-pointer transition-colors space-y-2 ${
+                      active
+                        ? 'border-[#14532D] bg-[#EEF6F1]'
+                        : 'border-[#E6E0D4] bg-[#FBF9F5] hover:bg-white'
+                    }`}
+                  >
+                    <div
+                      className="inline-block px-3 py-1 text-[11px] font-semibold text-white"
+                      style={{
+                        borderRadius: radius,
+                        backgroundColor: draft.theme.primaryColor,
+                      }}
+                    >
+                      نموذج زر
+                    </div>
+                    <p className="text-xs font-semibold text-[#1C1917]">{label}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            <span className="text-xs font-bold text-[#1C1917] block">
+              نمط تعبئة الأزرار والأيقونات
+            </span>
+            <div className="grid grid-cols-3 gap-2.5">
+              {(
+                [
+                  ['solid', 'لون موحّد واضح'],
+                  ['bordered', 'محدد بإطار أنيق'],
+                  ['gradient', 'تدرج إسلامي هادئ'],
+                ] as [ButtonFillStyle, string][]
+              ).map(([fillKey, label]) => {
+                const active = draft.theme.buttonFillStyle === fillKey;
+                return (
+                  <button
+                    key={fillKey}
+                    type="button"
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        theme: { ...draft.theme, buttonFillStyle: fillKey },
+                      })
+                    }
+                    className={`p-3 rounded-xl border text-right cursor-pointer transition-colors space-y-2 ${
+                      active
+                        ? 'border-[#14532D] bg-[#EEF6F1]'
+                        : 'border-[#E6E0D4] bg-[#FBF9F5] hover:bg-white'
+                    }`}
+                  >
+                    <div
+                      className="h-7 w-full rounded-md flex items-center justify-center text-[11px] font-semibold text-white"
+                      style={{
+                        backgroundColor: draft.theme.primaryColor,
+                        backgroundImage:
+                          fillKey === 'gradient'
+                            ? `linear-gradient(135deg, ${draft.theme.primaryColor}, ${draft.theme.accentColor})`
+                            : undefined,
+                        boxShadow:
+                          fillKey === 'bordered'
+                            ? 'inset 0 0 0 1.5px rgba(255,255,255,0.55)'
+                            : undefined,
+                      }}
+                    >
+                      معاينة
+                    </div>
+                    <p className="text-[11px] font-semibold text-[#1C1917]">{label}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Icon Style Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+              {(
+                [
+                  ['default', 'أيقونات قياسية', 2],
+                  ['thin', 'أيقونات رفيعة', 1.45],
+                  ['bold', 'أيقونات بارزة', 2.45],
+                  ['framed', 'أيقونات مؤطرة', 2],
+                ] as [IconStyle, string, number][]
+              ).map(([iconKey, label, strokeW]) => {
+                const active = draft.theme.iconStyle === iconKey;
+                return (
+                  <button
+                    key={iconKey}
+                    type="button"
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        theme: { ...draft.theme, iconStyle: iconKey },
+                      })
+                    }
+                    className={`p-2.5 rounded-xl border text-center cursor-pointer transition-colors space-y-1.5 ${
+                      active
+                        ? 'border-[#14532D] bg-[#EEF6F1]'
+                        : 'border-[#E6E0D4] bg-[#FBF9F5]'
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 mx-auto rounded-lg flex items-center justify-center bg-white ${
+                        iconKey === 'framed' ? 'border border-[#854D0E]/50 shadow-xs' : ''
+                      }`}
+                    >
+                      <BookOpen
+                        className="w-4 h-4 text-[#14532D]"
+                        strokeWidth={strokeW}
+                      />
+                    </div>
+                    <p className="text-[11px] font-semibold text-[#1C1917]">{label}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Fonts, Motion, Sounds & Additional Academic Settings */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-3 border-t border-[#E6E0D4]">
           <label className="space-y-1.5 block">
             <span className="text-xs font-medium text-[#44403C]">نوع الخط العام للمنصة</span>
             <select
@@ -803,95 +1392,6 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
               }
               className="w-full accent-[#14532D]"
             />
-          </label>
-
-          <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-[#44403C]">نمط الخلفية الهندسية</span>
-            <select
-              value={draft.theme.pagePattern}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  theme: { ...draft.theme, pagePattern: e.target.value as PagePatternType },
-                })
-              }
-              className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
-            >
-              <option value="octagonal">زخرفة ثمانية إسلامية خفيفة</option>
-              <option value="dots">نقاط هندسية ناعمة</option>
-              <option value="grid">شبكة تخطيط خفيفة</option>
-              <option value="none">لون سادة بدون زخرفة</option>
-            </select>
-          </label>
-
-          <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-[#44403C]">لون الخلفية العام</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={draft.theme.pageBgColor}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    theme: { ...draft.theme, pageBgColor: e.target.value },
-                  })
-                }
-                className="w-10 h-9 rounded border border-[#E6E0D4] cursor-pointer"
-              />
-              <input
-                type="text"
-                dir="ltr"
-                value={draft.theme.pageBgColor}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    theme: { ...draft.theme, pageBgColor: e.target.value },
-                  })
-                }
-                className="w-full px-3 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
-              />
-            </div>
-          </label>
-
-          <label className="space-y-1.5 block sm:col-span-2">
-            <span className="text-xs font-medium text-[#44403C]">
-              رابط صورة خلفية مخصصة (اختياري — Google Drive أو رابط مباشر)
-            </span>
-            <input
-              type="url"
-              dir="ltr"
-              value={draft.theme.pageBgImageUrl}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  theme: { ...draft.theme, pageBgImageUrl: e.target.value },
-                })
-              }
-              placeholder="اتركه فارغاً لاستخدام الخلفية التراثية الافتراضية"
-              className="w-full px-3 py-2 text-xs font-mono bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg text-left"
-            />
-          </label>
-
-          <label className="space-y-1.5 block">
-            <span className="text-xs font-medium text-[#44403C]">شكل الأزرار</span>
-            <select
-              value={draft.theme.buttonShape}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  theme: {
-                    ...draft.theme,
-                    buttonShape: e.target.value as ButtonShapeStyle,
-                  },
-                })
-              }
-              className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
-            >
-              <option value="rounded">دائري الحواف (متوازن)</option>
-              <option value="soft">مستدير ناعم (Soft)</option>
-              <option value="classic">كلاسيكي قليل الاستدارة</option>
-              <option value="sharp">زوايا قائمة حادة</option>
-            </select>
           </label>
 
           <label className="space-y-1.5 block">
@@ -942,6 +1442,84 @@ export const PlatformSettingsPanel: React.FC<PlatformSettingsPanelProps> = ({
               </button>
             </div>
           </div>
+
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">اتساع صفحات المنصة</span>
+            <select
+              value={draft.reading.contentWidth}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  reading: {
+                    ...draft.reading,
+                    contentWidth: e.target.value as 'compact' | 'normal' | 'wide',
+                  },
+                })
+              }
+              className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
+            >
+              <option value="compact">مركّز ومريح للقراءة (1180px)</option>
+              <option value="normal">متوازن قياسي (1400px)</option>
+              <option value="wide">ممتد واسع (1560px)</option>
+            </select>
+          </label>
+
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-medium text-[#44403C]">ترتيب الأحاديث الافتراضي</span>
+            <select
+              value={draft.reading.defaultHadithSort}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  reading: {
+                    ...draft.reading,
+                    defaultHadithSort: e.target.value as 'issue' | 'serial' | 'volume',
+                  },
+                })
+              }
+              className="w-full px-3 py-2 text-sm bg-[#FBF9F5] border border-[#E6E0D4] rounded-lg"
+            >
+              <option value="issue">حسب رقم المسألة في المحلّى</option>
+              <option value="serial">حسب الرقم الترتيبي</option>
+              <option value="volume">حسب المجلد والصفحة</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold text-[#1C1917] pt-5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.reading.showIslamicOrnaments}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  reading: {
+                    ...draft.reading,
+                    showIslamicOrnaments: e.target.checked,
+                  },
+                })
+              }
+              className="w-4 h-4 accent-[#14532D]"
+            />
+            <span>إظهار الزخارف الإسلامية الخفيفة</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs font-semibold text-[#1C1917] pt-5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.reading.enableGuestPrint}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  reading: {
+                    ...draft.reading,
+                    enableGuestPrint: e.target.checked,
+                  },
+                })
+              }
+              className="w-4 h-4 accent-[#14532D]"
+            />
+            <span>تفعيل طباعة بطاقة الراوي للزوار</span>
+          </label>
         </div>
       </section>
 

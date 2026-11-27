@@ -7,6 +7,7 @@ interface NarratorsDirectoryViewProps {
   narrators: Narrator[];
   selectedNarratorId: string;
   canEdit: boolean;
+  allowPrint?: boolean;
   returnToHadith?: { issueTitle?: string; onBack: () => void } | null;
   onSelectNarrator: (id: string) => void;
   onEditNarrator: (id: string) => void;
@@ -25,6 +26,7 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
   narrators,
   selectedNarratorId,
   canEdit,
+  allowPrint = true,
   returnToHadith,
   onSelectNarrator,
   onEditNarrator,
@@ -350,14 +352,16 @@ export const NarratorsDirectoryView: React.FC<NarratorsDirectoryViewProps> = ({
                 بطاقة ترجمة الراوي — عرض منظم في صفحة واحدة
               </span>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة / حفظ PDF</span>
-                </button>
+                {allowPrint && (
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-[#14532D] hover:bg-[#114224] text-white rounded-lg cursor-pointer"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>طباعة / حفظ PDF</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowSinglePageCard(false)}

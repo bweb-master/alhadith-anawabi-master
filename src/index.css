@@ -9,6 +9,8 @@
 :root {
   --app-font: "IBM Plex Sans Arabic", system-ui, -apple-system, sans-serif;
   --app-bg-color: #FBF9F5;
+  --app-card-bg: #FFFFFF;
+  --app-border-color: #E6E0D4;
   --app-primary: #14532D;
   --app-accent: #854D0E;
   --app-btn-radius: 0.5rem;
@@ -32,7 +34,37 @@
   }
 }
 
-/* Global button shape & motion customization */
+/* Dynamic Islamic Theme Token Bindings */
+.bg-\[\#14532D\] {
+  background-color: var(--app-primary, #14532D);
+}
+.hover\:bg-\[\#114224\]:hover,
+.bg-\[\#14532D\]:hover {
+  background-color: color-mix(in srgb, var(--app-primary, #14532D) 86%, black);
+}
+.text-\[\#14532D\] {
+  color: var(--app-primary, #14532D);
+}
+.border-\[\#14532D\] {
+  border-color: var(--app-primary, #14532D);
+}
+.bg-\[\#854D0E\] {
+  background-color: var(--app-accent, #854D0E);
+}
+.hover\:bg-\[\#713F12\]:hover {
+  background-color: color-mix(in srgb, var(--app-accent, #854D0E) 86%, black);
+}
+.text-\[\#854D0E\] {
+  color: var(--app-accent, #854D0E);
+}
+.border-\[\#E6E0D4\] {
+  border-color: var(--app-border-color, #E6E0D4);
+}
+.bg-white {
+  background-color: var(--app-card-bg, #FFFFFF);
+}
+
+/* Global button shape & fill customization */
 body.btn-shape-rounded button,
 body.btn-shape-rounded a.btn-hover-motion {
   border-radius: 0.625rem;
@@ -50,10 +82,58 @@ body.btn-shape-sharp a.btn-hover-motion {
   border-radius: 0px;
 }
 
+body.btn-fill-bordered button.bg-\[\#14532D\],
+body.btn-fill-bordered button.bg-\[\#854D0E\] {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4);
+}
+
+body.btn-fill-gradient button.bg-\[\#14532D\] {
+  background-image: linear-gradient(
+    135deg,
+    var(--app-primary, #14532D) 0%,
+    color-mix(in srgb, var(--app-primary, #14532D) 72%, var(--app-accent, #854D0E)) 100%
+  );
+}
+body.btn-fill-gradient button.bg-\[\#854D0E\] {
+  background-image: linear-gradient(
+    135deg,
+    var(--app-accent, #854D0E) 0%,
+    color-mix(in srgb, var(--app-accent, #854D0E) 75%, #1C1917) 100%
+  );
+}
+
+/* Global icon style customization */
+body.icon-thin svg.lucide {
+  stroke-width: 1.5;
+}
+body.icon-bold svg.lucide {
+  stroke-width: 2.35;
+}
+body.icon-framed .w-12.h-12,
+body.icon-framed .w-10.h-10 {
+  border: 1.5px solid color-mix(in srgb, var(--app-accent, #854D0E) 40%, transparent);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+/* Toggle ornaments off */
+body.hide-ornaments .islamic-ornament-el {
+  display: none !important;
+}
+
 /* Background Pattern Presets */
 .islamic-pattern-bg {
   background-color: var(--app-bg-color, #FBF9F5);
-  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23854D0E' stroke-width='0.55' stroke-opacity='0.035'%3E%3Cpolygon points='34.7,13 65.3,13 87,34.7 87,65.3 65.3,87 34.7,87 13,65.3 13,34.7'/%3E%3Cpolygon points='40.1,26 59.9,26 74,40.1 74,59.9 59.9,74 40.1,74 26,59.9 26,40.1'/%3E%3Cpolygon points='45,38 55,38 62,45 62,55 55,62 45,62 38,55 38,45'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23854D0E' stroke-width='0.55' stroke-opacity='0.04'%3E%3Cpolygon points='34.7,13 65.3,13 87,34.7 87,65.3 65.3,87 34.7,87 13,65.3 13,34.7'/%3E%3Cpolygon points='40.1,26 59.9,26 74,40.1 74,59.9 59.9,74 40.1,74 26,59.9 26,40.1'/%3E%3Cpolygon points='45,38 55,38 62,45 62,55 55,62 45,62 38,55 38,45'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.pattern-stars-bg {
+  background-color: var(--app-bg-color, #FBF9F5);
+  background-image: url("data:image/svg+xml,%3Csvg width='96' height='96' viewBox='0 0 96 96' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%2314532D' stroke-width='0.55' stroke-opacity='0.045'%3E%3Crect x='22' y='22' width='52' height='52'/%3E%3Crect x='22' y='22' width='52' height='52' transform='rotate(45 48 48)'/%3E%3Ccircle cx='48' cy='48' r='10'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.pattern-mihrab-bg {
+  background-color: var(--app-bg-color, #FBF9F5);
+  background-image: url("data:image/svg+xml,%3Csvg width='88' height='110' viewBox='0 0 88 110' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23854D0E' stroke-width='0.55' stroke-opacity='0.045'%3E%3Cpath d='M12 108 V48 Q12 14 44 10 Q76 14 76 48 V108'/%3E%3Cpath d='M22 108 V52 Q22 28 44 24 Q66 28 66 52 V108'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .pattern-dots-bg {
@@ -76,7 +156,7 @@ body.btn-shape-sharp a.btn-hover-motion {
 }
 
 .islamic-hero-pattern {
-  background-color: #FFFFFF;
+  background-color: var(--app-card-bg, #FFFFFF);
   background-image:
     radial-gradient(circle at 18% 22%, rgba(20, 83, 45, 0.03), transparent 55%),
     radial-gradient(circle at 82% 78%, rgba(133, 77, 14, 0.035), transparent 55%),
@@ -94,7 +174,7 @@ body.btn-shape-sharp a.btn-hover-motion {
 .card-hover-lift:hover {
   transform: translateY(-4px);
   background-color: #EEF6F1;
-  border-color: rgba(20, 83, 45, 0.42);
+  border-color: color-mix(in srgb, var(--app-primary, #14532D) 45%, transparent);
   box-shadow: 0 10px 28px -10px rgba(20, 83, 45, 0.11);
 }
 
